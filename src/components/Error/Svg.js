@@ -6,7 +6,6 @@ function Svg() {
             <svg
                 style={{ width: '50%', height: 'auto' }}
                 xmlns="http://www.w3.org/2000/svg"
-                xlink="http://www.w3.org/1999/xlink"
                 width="1197"
                 height="910"
                 viewBox="0 0 1197 910"

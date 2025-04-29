@@ -2,6 +2,7 @@
   "name": "appie-react",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://sliit-r25-002.github.io/Website",
   "dependencies": {
     "@babel/core": "^7.16.0",
     "@testing-library/jest-dom": "^5.11.4",

@@ -21,6 +21,7 @@ import SingleNews from './components/News/SingleNews';
 import Service from './components/Service';
 import Shops from './components/Shops';
 import ShopDetails from './components/Shops/Details';
+import HeatScape from './components/App';
 
 function Routes() {
     const [loading, setLoading] = useState(true);
@@ -62,6 +63,7 @@ function Routes() {
                             <Route exact path="/about-us-another" component={AboutUsTwo} />
                             <Route exact path="/shops" component={Shops} />
                             <Route exact path="/shops/shop-details" component={ShopDetails} />
+                            <Route exact path="/app" component={HeatScape} />
                             <Route component={Error} />
                         </Switch>
                     </ScrollToTop>

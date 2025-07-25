@@ -42,7 +42,7 @@ function HeaderHomeRtl({ action, className, lang, changeModeLan }) {
                                     </span>
                                 )}
 
-                                <a className="login-btn" href="#">
+                                <a className="login-btn" href="/app">
                                     <i className="fal fa-user" /> تسجيل الدخول
                                 </a>
                                 <a className="main-btn mr-30" href="#">

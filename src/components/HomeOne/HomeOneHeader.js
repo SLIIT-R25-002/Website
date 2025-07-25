@@ -98,7 +98,7 @@ function HomeOneHeader({
                                             LTR
                                         </span>
                                     ))}
-                                <a className="login-btn" href="#">
+                                <a className="login-btn" href="/app">
                                     <i className="fal fa-user" /> Login
                                 </a>
                                 <a className="main-btn ml-30" href="#">

@@ -56,7 +56,7 @@ function FeaturesHomeRtl({ className }) {
                                     aria-controls="v-pills-messages"
                                     aria-selected="false"
                                 >
-                                    <i className="fas fa-bell" /> إشعارات Saeety
+                                    <i className="fas fa-bell" /> إشعارات Safety
                                 </a>
                                 <a
                                     onClick={(e) => handleClick(e, 'app')}

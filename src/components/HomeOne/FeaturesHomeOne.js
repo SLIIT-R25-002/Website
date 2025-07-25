@@ -57,7 +57,7 @@ function FeaturesHomeOne({ className }) {
                                     aria-controls="v-pills-messages"
                                     aria-selected="false"
                                 >
-                                    <i className="fas fa-bell" /> Saeety Notices
+                                    <i className="fas fa-bell" /> Safety Notices
                                 </a>
                                 <a
                                     onClick={(e) => handleClick(e, 'app')}

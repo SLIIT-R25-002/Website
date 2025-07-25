@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import logo from '../../assets/images/logo-7.png';
 import StickyMenu from '../../lib/StickyMenu';
 import Navigation from '../Navigation';
@@ -27,9 +28,11 @@ function HeaderHomeSeven({ action }) {
                             </div>
                             <div className="col-lg-4  col-md-7 col-sm-6 col-6 order-2 order-sm-3">
                                 <div className="appie-btn-box text-right">
-                                    <a className="login-btn" href="/app">
-                                        <i className="fal fa-user"></i> Login
-                                    </a>
+                                    <Link to="/app">
+                                        <a className="login-btn">
+                                            <i className="fal fa-user"></i> Login
+                                        </a>
+                                    </Link>
                                     <a className="main-btn ml-30" href="#">
                                         Get Started
                                     </a>

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import logo from '../../assets/images/logo.png';
 import StickyMenu from '../../lib/StickyMenu';
 import Navigation from '../Navigation';
@@ -42,9 +43,11 @@ function HeaderHomeRtl({ action, className, lang, changeModeLan }) {
                                     </span>
                                 )}
 
-                                <a className="login-btn" href="/app">
-                                    <i className="fal fa-user" /> تسجيل الدخول
-                                </a>
+                                <Link to="/app">
+                                    <a className="login-btn">
+                                        <i className="fal fa-user" /> تسجيل الدخول
+                                    </a>
+                                </Link>
                                 <a className="main-btn mr-30" href="#">
                                     البدء
                                 </a>

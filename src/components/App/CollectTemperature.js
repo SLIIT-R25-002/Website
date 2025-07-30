@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Row, Col, Button } from 'antd';
 
-const wsUrl = 'ws://192.168.4.1:81'; // Change to ESP32 IP
+const wsUrl = 'ws://esp32.local:81';
 
 const CollectTemperature = () => {
     const [temperature, setTemperature] = useState([]);
@@ -225,7 +225,7 @@ const CollectTemperature = () => {
                                 <Col span={24} style={{ textAlign: 'center' }}>
                                     <Button
                                         style={controlButtonStyle}
-                                        onMouseDown={() => sendCommand('V_TURN_CAM:125')}
+                                        onMouseDown={() => sendCommand('V_TURN_CAM:65')}
                                         onMouseUp={() => sendCommand('V_TURN_CAM:90')}
                                         onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
                                     >
@@ -307,7 +307,7 @@ const CollectTemperature = () => {
                                 <Col span={24} style={{ textAlign: 'center' }}>
                                     <Button
                                         style={controlButtonStyle}
-                                        onMouseDown={() => sendCommand('V_TURN_CAM:65')}
+                                        onMouseDown={() => sendCommand('V_TURN_CAM:125')}
                                         onMouseUp={() => sendCommand('V_TURN_CAM:90')}
                                         onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
                                     >
@@ -330,6 +330,104 @@ const CollectTemperature = () => {
                         </Col>
                     </Row>
                 )}
+                {/* Movement Control Section */}
+                <Row style={{ marginBottom: '30px' }}>
+                    <Col span={24}>
+                        <h3>Vehicle Movement Control</h3>
+                        <Row justify="center" gutter={[16, 16]}>
+                            {/* Forward Button */}
+                            <Col xs={24} sm={12} md={6}>
+                                <Button
+                                    style={{
+                                        ...buttonStyle,
+                                        backgroundColor: '#4CAF50',
+                                        width: '100%',
+                                        height: '60px',
+                                        fontSize: '18px',
+                                    }}
+                                    onMouseDown={() => sendCommand('backward')}
+                                    onMouseUp={() => sendCommand('stop')}
+                                    onMouseLeave={() => sendCommand('stop')}
+                                >
+                                    ↑ Forward
+                                </Button>
+                            </Col>
+                        </Row>
+                        <Row justify="center" gutter={[16, 16]} style={{ marginTop: '10px' }}>
+                            {/* Left Button */}
+                            <Col xs={12} sm={6} md={6}>
+                                <Button
+                                    style={{
+                                        ...buttonStyle,
+                                        backgroundColor: '#2196F3',
+                                        width: '100%',
+                                        height: '60px',
+                                        fontSize: '18px',
+                                    }}
+                                    onMouseDown={() => sendCommand('left')}
+                                    onMouseUp={() => sendCommand('stop')}
+                                    onMouseLeave={() => sendCommand('stop')}
+                                >
+                                    ← Left
+                                </Button>
+                            </Col>
+                            {/* Right Button */}
+                            <Col xs={12} sm={6} md={6}>
+                                <Button
+                                    style={{
+                                        ...buttonStyle,
+                                        backgroundColor: '#f44336',
+                                        width: '100%',
+                                        height: '60px',
+                                        fontSize: '18px',
+                                    }}
+                                    onMouseDown={() => sendCommand('right')}
+                                    onMouseUp={() => sendCommand('stop')}
+                                    onMouseLeave={() => sendCommand('stop')}
+                                >
+                                    Right →
+                                </Button>
+                            </Col>
+                        </Row>
+                        <Row justify="center" gutter={[16, 16]} style={{ marginTop: '10px' }}>
+                            {/* Backward Button */}
+                            <Col xs={24} sm={12} md={6}>
+                                <Button
+                                    style={{
+                                        ...buttonStyle,
+                                        backgroundColor: '#FF9800',
+                                        width: '100%',
+                                        height: '60px',
+                                        fontSize: '18px',
+                                    }}
+                                    onMouseDown={() => sendCommand('forward')}
+                                    onMouseUp={() => sendCommand('stop')}
+                                    onMouseLeave={() => sendCommand('stop')}
+                                >
+                                    ↓ Backward
+                                </Button>
+                            </Col>
+                        </Row>
+                        <Row justify="center" style={{ marginTop: '20px' }}>
+                            {/* Emergency Stop Button */}
+                            <Col xs={24} sm={12} md={8}>
+                                <Button
+                                    style={{
+                                        ...buttonStyle,
+                                        backgroundColor: '#d32f2f',
+                                        width: '100%',
+                                        height: '50px',
+                                        fontSize: '16px',
+                                        fontWeight: 'bold',
+                                    }}
+                                    onClick={() => sendCommand('stop')}
+                                >
+                                    🛑 EMERGENCY STOP
+                                </Button>
+                            </Col>
+                        </Row>
+                    </Col>
+                </Row>
 
                 {/* Temperature Collection */}
                 <Row style={{ marginBottom: '30px' }}>

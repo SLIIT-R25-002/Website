@@ -3,7 +3,6 @@ import thumb from '../../assets/images/fun-fact-thumb.png';
 
 function HeroService() {
     return (
-        <>
             <div className="appie-page-title-area appie-page-service-title-area">
                 <div className="container">
                     <div className="row">
@@ -21,7 +20,6 @@ function HeroService() {
                     </div>
                 </div>
             </div>
-        </>
     );
 }
 

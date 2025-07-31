@@ -13,7 +13,6 @@ import sponserShape from '../../assets/images/sponser-shape.png';
 
 function SponserHomeTwo({ className }) {
     return (
-        <>
             <section className={`appie-sponser-area pb-100 ${className}`}>
                 <div className="container">
                     <div className="row">
@@ -70,7 +69,6 @@ function SponserHomeTwo({ className }) {
                     <img src={sponserShape} alt="" />
                 </div>
             </section>
-        </>
     );
 }
 

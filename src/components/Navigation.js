@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 
 function Navigation({ lang = false }) {
     return (
-        <>
-            {lang ? (
+            lang ? (
                 <ul>
                     <li>
                         <a href="#">
@@ -157,8 +156,7 @@ function Navigation({ lang = false }) {
                         <Link to="/contact">Contact</Link>
                     </li>
                 </ul>
-            )}
-        </>
+            )
     );
 }
 

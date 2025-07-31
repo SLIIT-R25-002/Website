@@ -5,7 +5,6 @@ import shape15 from '../../assets/images/shape/shape-15.png';
 
 function DownloadHomeTwo({ className }) {
     return (
-        <>
             <section className={`appie-download-area pt-150 pb-160 mb-90 ${className || ''}`}>
                 <div className="container">
                     <div className="row">
@@ -52,7 +51,6 @@ function DownloadHomeTwo({ className }) {
                     <img src={shape13} alt="" />
                 </div>
             </section>
-        </>
     );
 }
 

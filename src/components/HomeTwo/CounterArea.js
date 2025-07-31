@@ -7,7 +7,6 @@ import CounterUpCom from '../../lib/CounterUpCom';
 
 function CounterArea({ style }) {
     return (
-        <>
             <section className="appie-counter-area pt-90 pb-190" id="counter" style={style}>
                 <div className="container">
                     <div className="row">
@@ -104,7 +103,6 @@ function CounterArea({ style }) {
                     </div>
                 </div>
             </section>
-        </>
     );
 }
 

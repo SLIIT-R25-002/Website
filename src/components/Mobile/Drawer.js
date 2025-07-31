@@ -14,8 +14,7 @@ function Drawer({ drawer, action, lang }) {
         }
     };
     return (
-        <>
-            {lang ? (
+            lang ? (
                 <>
                     <div
                         onClick={(e) => action(e)}
@@ -428,8 +427,7 @@ function Drawer({ drawer, action, lang }) {
                         </div>
                     </div>
                 </>
-            )}
-        </>
+            )
     );
 }
 

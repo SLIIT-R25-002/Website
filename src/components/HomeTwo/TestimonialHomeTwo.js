@@ -18,7 +18,6 @@ function TestimonialHomeTwo() {
         dots: false,
     };
     return (
-        <>
             <section className="appie-testimonial-2-area mb-90" id="testimonial">
                 <div className="container">
                     <div className="row">
@@ -128,7 +127,6 @@ function TestimonialHomeTwo() {
                     </div>
                 </div>
             </section>
-        </>
     );
 }
 

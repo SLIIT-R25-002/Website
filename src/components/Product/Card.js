@@ -7,7 +7,6 @@ function Card({ cardData }) {
         e.target.src = productImg;
     };
     return (
-        <>
             <div className="single-shop-box">
                 <div className="thumb text-center">
                     <img
@@ -64,7 +63,6 @@ function Card({ cardData }) {
                     </div>
                 </div>
             </div>
-        </>
     );
 }
 

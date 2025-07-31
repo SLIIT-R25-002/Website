@@ -2,7 +2,6 @@ import React from 'react';
 
 function ServicesHomeTwo({ className }) {
     return (
-        <>
             <section className={`appie-services-2-area pb-100 ${className}`} id="service">
                 <div className="container">
                     <div className="row align-items-end">
@@ -140,7 +139,6 @@ function ServicesHomeTwo({ className }) {
                     </div>
                 </div>
             </section>
-        </>
     );
 }
 

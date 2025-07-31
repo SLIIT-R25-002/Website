@@ -3,7 +3,6 @@ import logo from '../../assets/images/logo-7.png';
 
 function SearchModule({ value, searchToggle }) {
     return (
-        <>
             <div className={`search-box ${value ? 'open' : ''}`}>
                 <div className="search-header">
                     <div className="container mt-60">
@@ -46,7 +45,6 @@ function SearchModule({ value, searchToggle }) {
                     </div>
                 </div>
             </div>
-        </>
     );
 }
 

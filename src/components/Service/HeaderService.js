@@ -5,7 +5,6 @@ import Navigation from '../Navigation';
 
 function HeaderService({ action }) {
     return (
-        <>
             <header className="appie-header-area appie-header-page-area appie-sticky">
                 <div className="container">
                     <div className="header-nav-box header-nav-box-3 header-nav-box-inner-page">
@@ -44,7 +43,6 @@ function HeaderService({ action }) {
                     </div>
                 </div>
             </header>
-        </>
     );
 }
 

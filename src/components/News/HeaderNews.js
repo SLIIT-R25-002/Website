@@ -9,7 +9,6 @@ function HeaderNews({ action }) {
         StickyMenu();
     });
     return (
-        <>
             <header className="appie-header-area appie-header-page-area appie-sticky">
                 <div className="container">
                     <div className="header-nav-box header-nav-box-3 header-nav-box-inner-page">
@@ -48,7 +47,6 @@ function HeaderNews({ action }) {
                     </div>
                 </div>
             </header>
-        </>
     );
 }
 

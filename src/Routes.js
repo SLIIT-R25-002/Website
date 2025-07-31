@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';
+import { BrowserRouter as Router, Routes as RouterRoutes, Route } from 'react-router-dom';
 import AboutUs from './components/AboutUs';
 import AboutUsTwo from './components/AboutUs/AboutUsTwo';
 import Contact from './components/Contact';
@@ -43,29 +43,29 @@ function Routes() {
             <div className={`appie-visible ${loading === false ? 'active' : ''}`}>
                 <Router>
                     <ScrollToTop>
-                        <Switch>
-                            <Route exact path="/" component={HomeOne} />
-                            <Route exact path="/home-two" component={Hometwo} />
-                            <Route exact path="/home-three" component={HomeThree} />
-                            <Route exact path="/home-four" component={HomeFour} />
-                            <Route exact path="/home-five" component={HomeFive} />
-                            <Route exact path="/home-six" component={HomeSix} />
-                            <Route exact path="/home-seven" component={HomeSeven} />
-                            <Route exact path="/home-eight" component={HomeEight} />
-                            <Route exact path="/home-dark" component={HomeDark} />
-                            <Route exact path="/home-rtl" component={HomeRtl} />
-                            <Route exact path="/news" component={News} />
-                            <Route exact path="/news/single-news" component={SingleNews} />
-                            <Route exact path="/service" component={Service} />
-                            <Route exact path="/about-us" component={AboutUs} />
-                            <Route exact path="/contact" component={Contact} />
-                            <Route exact path="/error" component={Error} />
-                            <Route exact path="/about-us-another" component={AboutUsTwo} />
-                            <Route exact path="/shops" component={Shops} />
-                            <Route exact path="/shops/shop-details" component={ShopDetails} />
-                            <Route exact path="/app" component={HeatScape} />
-                            <Route component={Error} />
-                        </Switch>
+                        <RouterRoutes>
+                            <Route path="/" element={<HomeOne />} />
+                            <Route path="/home-two" element={<Hometwo />} />
+                            <Route path="/home-three" element={<HomeThree />} />
+                            <Route path="/home-four" element={<HomeFour />} />
+                            <Route path="/home-five" element={<HomeFive />} />
+                            <Route path="/home-six" element={<HomeSix />} />
+                            <Route path="/home-seven" element={<HomeSeven />} />
+                            <Route path="/home-eight" element={<HomeEight />} />
+                            <Route path="/home-dark" element={<HomeDark />} />
+                            <Route path="/home-rtl" element={<HomeRtl />} />
+                            <Route path="/news" element={<News />} />
+                            <Route path="/news/single-news" element={<SingleNews />} />
+                            <Route path="/service" element={<Service />} />
+                            <Route path="/about-us" element={<AboutUs />} />
+                            <Route path="/contact" element={<Contact />} />
+                            <Route path="/error" element={<Error />} />
+                            <Route path="/about-us-another" element={<AboutUsTwo />} />
+                            <Route path="/shops" element={<Shops />} />
+                            <Route path="/shops/shop-details" element={<ShopDetails />} />
+                            <Route path="/app" element={<HeatScape />} />
+                            <Route path="*" element={<Error />} />
+                        </RouterRoutes>
                     </ScrollToTop>
                 </Router>
             </div>

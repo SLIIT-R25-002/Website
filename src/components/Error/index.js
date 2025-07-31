@@ -1,12 +1,12 @@
 import React from 'react';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Svg from './Svg';
 
 function Error() {
-    const history = useHistory();
+    const navigate = useNavigate();
     const goBack = (e) => {
         e.preventDefault();
-        history.goBack();
+        navigate(-1);
     };
 
     return (

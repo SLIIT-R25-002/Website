@@ -6,7 +6,6 @@ import shape15 from '../../assets/images/shape/shape-15.png';
 
 function FeaturesHomeTwo() {
     return (
-        <>
             <section className="appie-features-area-2 pt-90 pb-100" id="features">
                 <div className="container">
                     <div className="row justify-content-center">
@@ -60,7 +59,6 @@ function FeaturesHomeTwo() {
                     <img src={shape13} alt="" />
                 </div>
             </section>
-        </>
     );
 }
 

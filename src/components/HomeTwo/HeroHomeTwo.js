@@ -8,7 +8,6 @@ import shapeNine from '../../assets/images/shape/shape-9.png';
 
 function HeroHomeTwo() {
     return (
-        <>
             <section className="appie-hero-area-2 mb-90">
                 <div className="container">
                     <div className="row align-items-center">
@@ -58,7 +57,6 @@ function HeroHomeTwo() {
                     <img src={shapeTwelve} alt="" />
                 </div>
             </section>
-        </>
     );
 }
 

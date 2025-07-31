@@ -4,7 +4,6 @@ import logo from '../../assets/images/logo-2.png';
 
 function FooterHomeTwo() {
     return (
-        <>
             <section className="appie-footer-area">
                 <div className="container">
                     <div className="row">
@@ -149,7 +148,6 @@ function FooterHomeTwo() {
                     </div>
                 </div>
             </section>
-        </>
     );
 }
 

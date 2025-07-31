@@ -16,7 +16,7 @@ function CounterUpCom({ endValue = 0, sectionSelect }) {
             });
         }
     }, [sectionSelect, showCount]);
-    return <>{showCount ? <CountUp delay={0} duration={3} end={endValue} /> : 0}</>;
+    return showCount ? <CountUp delay={0} duration={3} end={endValue} /> : 0;
 }
 
 export default CounterUpCom;

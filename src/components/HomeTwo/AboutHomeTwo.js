@@ -3,7 +3,6 @@ import aboutThumb from '../../assets/images/about-thumb.png';
 
 function AboutHomeTwo() {
     return (
-        <>
             <section className="appie-about-area mb-100">
                 <div className="container">
                     <div className="row">
@@ -61,7 +60,6 @@ function AboutHomeTwo() {
                     </div>
                 </div>
             </section>
-        </>
     );
 }
 

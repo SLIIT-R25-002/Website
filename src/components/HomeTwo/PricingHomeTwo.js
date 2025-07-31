@@ -7,7 +7,6 @@ function PricingHomeTwo() {
         setSwitchValue(!toggleSwitch);
     };
     return (
-        <>
             <section className="appie-pricing-2-area pb-100">
                 <div className="container">
                     <div className="row">
@@ -340,7 +339,6 @@ function PricingHomeTwo() {
                     </div>
                 </div>
             </section>
-        </>
     );
 }
 

@@ -8,7 +8,6 @@ function HeaderHomeTwo({ action }) {
         StickyMenu();
     }, []);
     return (
-        <>
             <header className="appie-header-area appie-header-2-area appie-sticky">
                 <div className="container">
                     <div className="header-nav-box">
@@ -42,7 +41,6 @@ function HeaderHomeTwo({ action }) {
                     </div>
                 </div>
             </header>
-        </>
     );
 }
 

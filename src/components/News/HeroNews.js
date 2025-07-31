@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 
 function HeroNews({ title, breadcrumb = [] }) {
     return (
-        <>
             <div className="appie-page-title-area">
                 <div className="container">
                     <div className="row">
@@ -24,7 +23,6 @@ function HeroNews({ title, breadcrumb = [] }) {
                     </div>
                 </div>
             </div>
-        </>
     );
 }
 

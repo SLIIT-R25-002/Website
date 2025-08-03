@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Row, Col, Button } from 'antd';
+import { Row, Col, Button, message } from 'antd';
 
 const wsUrl = 'ws://esp32.local:81';
 
@@ -832,7 +832,7 @@ const CollectTemperature = () => {
                                         } else if (targetCoords.lat && targetCoords.lng) {
                                             sendCommand(`SET_TARGET:${targetCoords.lat},${targetCoords.lng}`);
                                         } else {
-                                            alert('Please enter target coordinates');
+                                            message.warning('Please enter target coordinates');
                                         }
                                     }}
                                     disabled={!autonomousMode && (!targetCoords.lat || !targetCoords.lng)}

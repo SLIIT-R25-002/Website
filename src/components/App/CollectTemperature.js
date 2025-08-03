@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Row, Col, Button, message } from 'antd';
 
-const wsUrl = 'ws://esp32.local:81';
+const wsUrl = 'wss://esp32.local:81';
 
 const CollectTemperature = () => {
     const [temperature, setTemperature] = useState([]);

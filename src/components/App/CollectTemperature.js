@@ -45,8 +45,8 @@ const CollectTemperature = () => {
     const ws = useRef(null);
     const scrollViewRef = useRef(null);
 
-    const addLogMessage = useCallback((message) => {
-        setLogMessages((prevMessages) => [...prevMessages, { message, key: prevMessages.length }]);
+    const addLogMessage = useCallback((messageTxt) => {
+        setLogMessages((prevMessages) => [...prevMessages, { messageTxt, key: prevMessages.length }]);
     }, []);
 
     const sendCommand = useCallback(
@@ -83,15 +83,15 @@ const CollectTemperature = () => {
             addLogMessage(`WebSocket error: ${JSON.stringify(e, null, 2)}`);
         };
 
-        ws.current.onmessage = (message) => {
-            if (message.data.includes('CAM_IP:')) {
-                setCamIP(message.data?.split(':')[1] || '');
+        ws.current.onmessage = (messageTxt) => {
+            if (messageTxt.data.includes('CAM_IP:')) {
+                setCamIP(messageTxt.data?.split(':')[1] || '');
             }
-            if (message.data.includes('TEMP_DATA:')) {
-                setTemperature(JSON.parse(message.data?.split(':')[1]) || []);
+            if (messageTxt.data.includes('TEMP_DATA:')) {
+                setTemperature(JSON.parse(messageTxt.data?.split(':')[1]) || []);
             }
-            if (message.data.includes('GPS_DATA:')) {
-                const parsedData = JSON.parse(message.data?.split('GPS_DATA:')[1]) || {};
+            if (messageTxt.data.includes('GPS_DATA:')) {
+                const parsedData = JSON.parse(messageTxt.data?.split('GPS_DATA:')[1]) || {};
                 console.log('Parsed GPS Data:', parsedData);
                 setGPSData({
                     latitude: parsedData.lat || 0,
@@ -103,8 +103,8 @@ const CollectTemperature = () => {
                     time: parsedData.time || '',
                 });
             }
-            if (message.data.includes('GYRO_DATA:')) {
-                const parsedData = JSON.parse(message.data?.split('GYRO_DATA:')[1]) || {};
+            if (messageTxt.data.includes('GYRO_DATA:')) {
+                const parsedData = JSON.parse(messageTxt.data?.split('GYRO_DATA:')[1]) || {};
                 setGyroData({
                     gyro_x: parsedData.gyro_x || 0,
                     gyro_y: parsedData.gyro_y || 0,
@@ -120,22 +120,22 @@ const CollectTemperature = () => {
                     temp: parsedData.temp || 0,
                 });
             }
-            if (message.data.includes('TARGET_REACHED')) {
+            if (messageTxt.data.includes('TARGET_REACHED')) {
                 setAutonomousMode(false);
                 addLogMessage('🎯 Target reached!');
             }
-            if (message.data.includes('TARGET_SET:')) {
-                const coords = message.data.split('TARGET_SET:')[1].split(',');
+            if (messageTxt.data.includes('TARGET_SET:')) {
+                const coords = messageTxt.data.split('TARGET_SET:')[1].split(',');
                 setTargetCoords({ lat: coords[0], lng: coords[1] });
                 setAutonomousMode(true);
                 addLogMessage(`🎯 Target set: ${coords[0]}, ${coords[1]}`);
             }
-            if (message.data.includes('AUTO_STOPPED')) {
+            if (messageTxt.data.includes('AUTO_STOPPED')) {
                 setAutonomousMode(false);
                 addLogMessage('🛑 Autonomous mode stopped');
             }
-            if (message.data.includes('NAV_DATA:')) {
-                const parsedData = JSON.parse(message.data?.split('NAV_DATA:')[1]) || {};
+            if (messageTxt.data.includes('NAV_DATA:')) {
+                const parsedData = JSON.parse(messageTxt.data?.split('NAV_DATA:')[1]) || {};
                 setNavigationData({
                     distance: parsedData.distance || 0,
                     targetBearing: parsedData.targetBearing || 0,
@@ -143,7 +143,7 @@ const CollectTemperature = () => {
                     headingError: parsedData.headingError || 0
                 });
             }
-            addLogMessage(`Received message: ${message.data}`);
+            addLogMessage(`Received message: ${messageTxt.data}`);
         };
     }, [addLogMessage, sendCommand]);
 
@@ -270,9 +270,9 @@ const CollectTemperature = () => {
                                             fontFamily: 'monospace',
                                         }}
                                     >
-                                        {logMessages.map(({ message, key }) => (
+                                        {logMessages.map(({ messageTxt, key }) => (
                                             <div key={key} style={{ marginBottom: '2px' }}>
-                                                {message}
+                                                {messageTxt}
                                             </div>
                                         ))}
                                     </div>

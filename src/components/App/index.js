@@ -8,6 +8,7 @@ import {
     CheckCircleOutlined,
 } from '@ant-design/icons';
 import CollectTemperature from './CollectTemperature';
+import HeatIslandDetector from './HeatIslandDetector';
 
 const { Header, Content, Footer } = Layout;
 
@@ -33,7 +34,7 @@ const HeatScape = () => {
         {
             title: 'VLM Analysis',
             icon: <CheckCircleOutlined />,
-            content: 'Capture images from the thermal camera.',
+            content: <HeatIslandDetector/>,
         },
     ];
 

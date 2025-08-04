@@ -24,6 +24,7 @@
     "slick-carousel": "^1.8.1",
     "suncalc": "^1.9.0",
     "three": "^0.178.0",
+    "uuid": "^11.1.0",
     "web-vitals": "^4.2.4",
     "yet-another-react-lightbox": "^3.25.0"
   },

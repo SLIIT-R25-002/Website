@@ -165,7 +165,7 @@ const HeatIslandDetector = () => {
         </thead>
         <tbody>
           {entries.map((e, i) => (
-            <tr key={`${e.location}-${e.material}-${e.temperature}-${i}`}>
+            <tr key={`${e.location}-${e.material}-${e.temperature}`}>
               <td>{e.location}</td>
               <td>{e.material}</td>
               <td>{e.temperature}</td>

@@ -7,7 +7,7 @@ import {
     FireOutlined,
     CheckCircleOutlined,
 } from '@ant-design/icons';
-import CollectTemperature from './CollectTemperature';
+import CollectTemperature from './Tempetature/CollectTemperature';
 import HeatIslandDetector from './HeatIslandDetector';
 
 const { Header, Content, Footer } = Layout;

@@ -17,33 +17,14 @@ function ModelViewer() {
     const gisGroupRef = useRef(new THREE.Group());
 
     // 🌍 User Inputs
-    const [lat, setLat] = useState(6.9271); // Sri Lanka default
+    const [lat, setLat] = useState(6.9271);
     const [lon, setLon] = useState(79.8612);
     const [dateTime, setDateTime] = useState(new Date().toISOString().slice(0, 16)); // YYYY-MM-DDTHH:mm
+    const [temperature, setTemperature] = useState(35);
+    const [humidity, setHumidity] = useState(64);
 
-    // 📊 Exposure result
-    const [exposurePercent, setExposurePercent] = useState(null);
-
-    // --- Transform Control ---
-    const attachTransformControl = (object) => {
-        if (!scene || !camera || !renderer || !object) return;
-
-        if (transformControlRef.current) {
-            scene.remove(transformControlRef.current);
-            transformControlRef.current.dispose();
-        }
-
-        const control = new TransformControls(camera, renderer.domElement);
-        control.attach(object);
-        control.setMode('translate');
-
-        control.addEventListener('dragging-changed', (event) => {
-            orbitControlsRef.current.enabled = !event.value;
-        });
-
-        scene.add(control);
-        transformControlRef.current = control;
-    };
+    // API Key
+    const API_KEY = '229b7c42c71d41f99ae44120252003';
 
     useEffect(() => {
         const mount = mountRef.current;
@@ -74,7 +55,7 @@ function ModelViewer() {
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         newScene.add(ambientLight);
 
-        // Sun light (Directional)
+        // Sun light
         const sunLight = new THREE.DirectionalLight(0xffffdd, 1);
         sunLight.castShadow = true;
         sunLight.shadow.mapSize.width = 2048;
@@ -87,32 +68,25 @@ function ModelViewer() {
         sunLight.shadow.camera.bottom = -50;
         newScene.add(sunLight);
 
-        // Add models
+        // Add groups
         newScene.add(buildingGroupRef.current);
         newScene.add(gisGroupRef.current);
 
-        // Update Sun Position
+        // Update Sun
         const updateSun = () => {
             const now = new Date(dateTime);
             const { altitude, azimuth } = SunCalc.getPosition(now, lat, lon);
-
-            const radius = 100;
-            const x = radius * Math.cos(altitude) * Math.sin(azimuth);
-            const y = radius * Math.sin(altitude);
-            const z = radius * Math.cos(altitude) * Math.cos(azimuth);
-
-            sunLight.position.set(x, y, z);
+            const r = 100;
+            sunLight.position.set(
+                r * Math.cos(altitude) * Math.sin(azimuth),
+                r * Math.sin(altitude),
+                r * Math.cos(altitude) * Math.cos(azimuth)
+            );
             sunLight.target.position.set(0, 0, 0);
             sunLight.lookAt(0, 0, 0);
-
-            // Optional: update helper
-            if (window.sunHelper) newScene.remove(window.sunHelper);
-            const helper = new THREE.DirectionalLightHelper(sunLight, 5);
-            newScene.add(helper);
-            window.sunHelper = helper;
         };
 
-        // Animation loop
+        // Animation
         const animate = () => {
             requestAnimationFrame(animate);
             orbitControls.update();
@@ -123,7 +97,6 @@ function ModelViewer() {
         // Initial update
         updateSun();
 
-        // Cleanup
         return () => {
             if (transformControlRef.current) {
                 newScene.remove(transformControlRef.current);
@@ -135,113 +108,32 @@ function ModelViewer() {
         };
     }, [lat, lon, dateTime]);
 
-    // --- Exposure Calculation ---
-    const calculateExposure = () => {
-        if (!scene || !camera || !renderer) {
-            console.warn("Scene, camera, or renderer not available.");
-            return;
+    // --- Transform Control ---
+    const attachTransformControl = (object) => {
+        if (!scene || !camera || !renderer || !object) return;
+
+        if (transformControlRef.current) {
+            scene.remove(transformControlRef.current);
+            transformControlRef.current.dispose();
         }
 
-        const model = buildingGroupRef.current;
-        if (model.children.length === 0) {
-            console.warn("Please upload a building model first.");
-            return;
-        }
+        const control = new TransformControls(camera, renderer.domElement);
+        control.attach(object);
+        control.setMode('translate');
 
-        const raycaster = new THREE.Raycaster();
-        const light = scene.children.find(c => c.isDirectionalLight);
-        if (!light) {
-            console.warn("Sun light not found in scene.");
-            return;
-        }
-
-        const sunDirection = new THREE.Vector3();
-        light.getWorldDirection(sunDirection).normalize();
-        console.log("🌞 Sun Direction:", sunDirection.toArray());
-
-        let totalVertices = 0;
-        let exposedVertices = 0;
-
-        console.group("📊 Exposure Calculation per Mesh");
-
-        model.traverse((node) => {
-            if (node.isMesh && node.geometry) {
-                const positionAttr = node.geometry.attributes.position;
-                const worldMatrix = node.matrixWorld;
-
-                console.group(`Mesh: ${node.name || 'Unnamed'} | Vertices: ${positionAttr.count}`);
-
-                for (let i = 0; i < positionAttr.count; i+=1) { // ✅ Fixed: was i+1
-                    const vertex = new THREE.Vector3();
-                    vertex.fromBufferAttribute(positionAttr, i);
-                    vertex.applyMatrix4(worldMatrix);
-
-                    totalVertices += 1;
-
-                    raycaster.set(vertex, sunDirection);
-                    const intersects = raycaster.intersectObjects(scene.children, true);
-
-                    const isExposed = intersects.length === 0 || intersects[0].object === node;
-                    if (isExposed) exposedVertices += 1;
-
-                    // Optional: log first few vertices for debug
-                    if (i < 5) {
-                        console.log(`Vertex ${i}:`, vertex.toArray(), isExposed ? "✅ Exposed" : "❌ Shadowed");
-                    }
-                }
-
-                console.log(`Result: ${exposedVertices} / ${positionAttr.count} vertices exposed`);
-                console.groupEnd();
-            }
+        control.addEventListener('dragging-changed', (event) => {
+            orbitControlsRef.current.enabled = !event.value;
         });
 
-        console.groupEnd();
-
-        const exposure = totalVertices > 0 ? (exposedVertices / totalVertices) * 100 : 0;
-        const roundedExposure = exposure.toFixed(1);
-
-        console.group("✅ Final Exposure Summary");
-        console.log("Total Vertices:", totalVertices);
-        console.log("Exposed Vertices:", exposedVertices);
-        console.log("Sun Direction:", sunDirection.toArray());
-        console.log(`Exposure Percentage: ${roundedExposure}%`);
-        console.groupEnd();
-
-        setExposurePercent(roundedExposure);
+        scene.add(control);
+        transformControlRef.current = control;
     };
 
-    // --- Export to CSV ---
-    const exportToCSV = () => {
-        if (exposurePercent === null) {
-            console.warn("Run exposure calculation first.");
-            return;
-        }
-
-        const rows = [
-            ['Property', 'Value'],
-            ['Latitude', lat],
-            ['Longitude', lon],
-            ['Date & Time', dateTime],
-            ['Sunlight Exposure (%)', exposurePercent],
-        ];
-
-        const csvContent = `data:text/csv;charset=utf-8,${rows.map(row => row.join(",")).join("\n")}`;
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `exposure_report_${new Date().toISOString().slice(0, 10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    // --- Model Loading ---
+    // --- Load Model ---
     const loadModel = (file, group, selectable = false) => {
         if (!file || !scene) return;
-
         const url = URL.createObjectURL(file);
         const ext = file.name.toLowerCase().split('.').pop();
-
         group.clear();
 
         if (ext === 'glb' || ext === 'gltf') {
@@ -253,31 +145,74 @@ function ModelViewer() {
                         if (node.isMesh) {
                             node.castShadow = true;
                             node.receiveShadow = true;
+
+                            // eslint-disable-next-line camelcase
+                            const {Thickness, Density, Thermal_Conductivity, Specific_Heat_Capacity, Emissivity, Infrared_Reflectivity, Porosity, Solar_Absorptance, Solar_Reflectance, Material_type} = node.userData || {};
+
+                            // Only apply defaults for missing fields
+                            // eslint-disable-next-line camelcase
+                            if (Thickness === undefined || Density === undefined || Thermal_Conductivity === undefined || Specific_Heat_Capacity === undefined || Emissivity === undefined || Infrared_Reflectivity === undefined || Porosity === undefined || Solar_Absorptance === undefined || Solar_Reflectance === undefined || Material_type === undefined) {
+                                console.warn(`Missing metadata for ${node.name}. Using defaults for missing fields.`);
+                                node.userData = {
+                                    ...node.userData, // preserve existing
+
+                                    Material_type: node.userData.Material_type ?? 'Generic',
+                                    Thickness: node.userData.Thickness ?? 0.2,
+                                    Density: node.userData.Density ?? 2000,
+                                    Thermal_Conductivity: node.userData.Thermal_Conductivity ?? 1.5,
+                                    Specific_Heat_Capacity: node.userData.Specific_Heat_Capacity ?? 850,
+                                    Emissivity: node.userData.Emissivity ?? 0.9,
+                                    Infrared_Reflectivity: node.userData.Infrared_Reflectivity ?? 0.1,
+                                    Porosity: node.userData.Porosity ?? 10,
+                                    Solar_Absorptance: node.userData.Solar_Absorptance ?? 0.7,
+                                    Solar_Reflectance: node.userData.Solar_Reflectance ?? 0.3,
+                                    Mass: node.userData.Mass ?? 0.5,
+                                    Area: node.userData.Area ?? 10
+                                };
+                            } else {
+                                console.log(`Loaded metadata for ${node.name}:`, node.userData);
+                            }
                         }
                     });
+
                     group.add(model);
                     if (selectable) attachTransformControl(model);
                 },
                 undefined,
-                (e) => console.error('GLTF Error', e)
+                (error) => console.error('GLTF Error', error)
             );
         } else if (ext === 'stl') {
             new STLLoader().load(
                 url,
                 (geom) => {
-                    const mesh = new THREE.Mesh(
-                        geom,
-                        new THREE.MeshStandardMaterial({ color: 0xaaaaaa })
-                    );
+                    const material = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+                    const mesh = new THREE.Mesh(geom, material);
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
-                    mesh.scale.set(0.01, 0.01, 0.01);
+                    mesh.scale.set(0.01, 0.01, 0.01); // STLs are often large
+
+                    // For STL, simulate metadata (since STL doesn't support userData)
+                    mesh.userData = {
+                        Material_type: 'Steel',
+                        Thickness: 0.03,
+                        Density: 7800,
+                        Thermal_Conductivity: 50,
+                        Specific_Heat_Capacity: 550,
+                        Emissivity: 0.3,
+                        Infrared_Reflectivity: 0.7,
+                        Porosity: 0,
+                        Solar_Absorptance: 0.55,
+                        Solar_Reflectance: 0.45,
+                    };
+
                     group.add(mesh);
                     if (selectable) attachTransformControl(mesh);
                 },
                 undefined,
-                (e) => console.error('STL Error', e)
+                (error) => console.error('STL Error', error)
             );
+        } else {
+            console.warn('Unsupported format:', file.name);
         }
     };
 
@@ -291,14 +226,134 @@ function ModelViewer() {
         if (file) loadModel(file, gisGroupRef.current, false);
     };
 
-    const captureSnapshot = () => {
-        if (renderer) {
-            const dataURL = renderer.domElement.toDataURL('image/png');
-            const link = document.createElement('a');
-            link.href = dataURL;
-            link.download = 'snapshot.png';
-            link.click();
+    // --- START SIMULATION ---
+    const startSimulation = async () => {
+        const model = buildingGroupRef.current;
+        if (model.children.length === 0) {
+            console.log("Please upload a building model first.");
+            return;
         }
+
+        const date = dateTime.split('T')[0];
+        const hour = parseInt(dateTime.split('T')[1].split(':')[0], 10); // ✅ Fixed: radix
+
+        // Fetch weather data
+        let windSpeedKmph = 10;
+        try {
+            const res = await fetch(
+                `http://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
+            );
+            const data = await res.json();
+            const hourData = data.forecast.forecastday[0].hour.find(h => new Date(h.time).getHours() === hour); // ✅ Fixed: arrow body
+            if (hourData) windSpeedKmph = hourData.wind_kph;
+        } catch (err) {
+            console.warn("Weather API failed, using default wind speed", err);
+        }
+
+        const windSpeedMps = parseFloat(((windSpeedKmph * 1000) / 3600).toFixed(4)); // km/h → m/s
+
+        // Raycaster for sun exposure
+        const sunLight = scene.children.find(c => c.isDirectionalLight);
+        if (!sunLight) return;
+
+        const sunDirection = new THREE.Vector3();
+        sunLight.getWorldDirection(sunDirection).normalize();
+
+        const raycaster = new THREE.Raycaster();
+
+        // CSV Data
+        const csvData = [
+            [
+                "Object Name",
+                "Thickness (m)",
+                "Density (kg/m³)",
+                "Thermal_Conductivity (W/m·K)",
+                "Specific_Heat_Capacity (J/kg·K)",
+                "Emissivity",
+                "Infrared_Reflectivity",
+                "Porosity",
+                "Solar_Absorptance",
+                "Solar_Reflectance",
+                "Area",
+                "Mass",
+                "Material_type",
+                "Wind_Speed",
+                "Sun_Exposure",
+                "Temperature",
+                "Humidity"
+            ]
+        ];
+
+        model.traverse((node) => {
+            if (node.isMesh) {
+                const { userData } = node; // ✅ Fixed: destructuring
+                const geom = node.geometry;
+                const matrix = node.matrixWorld;
+
+                // Area approximation
+                const positionAttr = geom.attributes.position;
+                if (positionAttr) {
+                    for (let i = 0; i < positionAttr.count; i += 3) {
+                        const v1 = new THREE.Vector3().fromBufferAttribute(positionAttr, i);
+                        const v2 = new THREE.Vector3().fromBufferAttribute(positionAttr, i + 1);
+                        const v3 = new THREE.Vector3().fromBufferAttribute(positionAttr, i + 2);
+                        v1.applyMatrix4(matrix);
+                        v2.applyMatrix4(matrix);
+                        v3.applyMatrix4(matrix);
+                    }
+                }
+
+                // Sun Exposure (%)
+                let totalVertices = 0;
+                let exposedVertices = 0;
+                if (positionAttr) {
+                    for (let i = 0; i < positionAttr.count; i+=1) {
+                        const vertex = new THREE.Vector3().fromBufferAttribute(positionAttr, i);
+                        vertex.applyMatrix4(matrix);
+                        totalVertices += 1;
+                        raycaster.set(vertex, sunDirection);
+                        const intersects = raycaster.intersectObjects(scene.children, true);
+                        if (intersects.length === 0 || intersects[0].object === node) {
+                            exposedVertices += 1;
+                        }
+                    }
+                }
+                const sunExposure = totalVertices > 0 ? ((exposedVertices / totalVertices) * 100).toFixed(1) : 0;
+                if (node.name && node.name.startsWith('Plane')) {
+                    console.log(`Skipping ${node.name} (starts with "Plane")`);
+                    return; // Skip this node
+                }
+                csvData.push([
+                    node.name || 'Unnamed',
+                    (userData.Thickness || 0),
+                    userData.Density || '',
+                    (userData.Thermal_Conductivity || 0),
+                    userData.Specific_Heat_Capacity || '',
+                    (userData.Emissivity || 0),
+                    (userData.Infrared_Reflectivity || 0),
+                    userData.Porosity || '',
+                    (userData.Solar_Absorptance || 0),
+                    (userData.Solar_Reflectance || 0),
+                    (userData.Area || 0),
+                    (userData.Mass || 0),
+                    userData.Material_type || 'Unknown',
+                    windSpeedMps,
+                    sunExposure,
+                    temperature,
+                    humidity
+                ]);
+            }
+        });
+
+        // Generate CSV
+        const csvContent = `data:text/csv;charset=utf-8,${csvData.map(row => row.join(",")).join("\n")}`; // ✅ Fixed: template literal
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `simulation_result_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -316,7 +371,7 @@ function ModelViewer() {
 
             {/* Controls */}
             <div style={{ marginTop: '20px', padding: '10px', background: '#f8f9fa', borderRadius: '8px' }}>
-                <h3>🌍 Sunlight Exposure Setup</h3>
+                <h3>🌍 Simulation Setup</h3>
 
                 <div style={{ marginBottom: '10px' }}>
                     <label>Latitude: </label>
@@ -349,19 +404,27 @@ function ModelViewer() {
                     />
                 </div>
 
-                <button type="button" onClick={calculateExposure} style={{ marginTop: '10px', marginRight: '10px' }}>
-                    🌞 Calculate Exposure
-                </button>
+                <div style={{ marginBottom: '10px' }}>
+                    <label>Temperature (°C): </label>
+                    <input
+                        type="number"
+                        step="0.1"
+                        value={temperature}
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        style={{ width: '80px' }}
+                    />
+                </div>
 
-                <button type="button" onClick={exportToCSV} style={{ marginTop: '10px', marginRight: '10px' }}>
-                    💾 Export to CSV
-                </button>
-
-                {exposurePercent !== null && (
-                    <p style={{ fontWeight: 'bold', color: '#d9534f', marginTop: '10px' }}>
-                        🔆 Sunlight Exposure: <strong>{exposurePercent}%</strong> of model is lit.
-                    </p>
-                )}
+                <div style={{ marginBottom: '10px' }}>
+                    <label>Humidity (%): </label>
+                    <input
+                        type="number"
+                        step="1"
+                        value={humidity}
+                        onChange={(e) => setHumidity(parseInt(e.target.value, 10))} // ✅ Fixed: radix
+                        style={{ width: '80px' }}
+                    />
+                </div>
 
                 <hr style={{ margin: '15px 0' }} />
 
@@ -373,8 +436,8 @@ function ModelViewer() {
                 <input type="file" accept=".glb,.gltf,.stl" onChange={handleGISUpload} />
                 <br />
 
-                <button type="button" onClick={captureSnapshot} style={{ marginTop: '10px' }}>
-                    📸 Take Snapshot
+                <button type="button" onClick={startSimulation} style={{ marginTop: '15px', fontWeight: 'bold' }}>
+                    ▶️ Start Simulation
                 </button>
             </div>
         </div>

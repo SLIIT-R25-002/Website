@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Row, Col, Button, Card, Space, Typography, Alert, Progress } from 'antd';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Row, Col, Button, Card, Space, Typography, Alert } from 'antd';
 import { CameraOutlined, CarOutlined, EnvironmentOutlined, DashboardOutlined, StopOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -11,7 +11,6 @@ const CollectTemperature = () => {
     const [socketReady, setSocketReady] = useState(false);
     const [logMessages, setLogMessages] = useState([]);
     const [camIP, setCamIP] = useState('');
-    const [showLogs, setShowLogs] = useState(false);
     const [isCollecting, setIsCollecting] = useState(false);
     const [gpsData, setGPSData] = useState({
         latitude: 0,
@@ -39,6 +38,7 @@ const CollectTemperature = () => {
 
     const ws = useRef(null);
     const scrollViewRef = useRef(null);
+    const keysPressed = useRef(new Set());
 
     const addLogMessage = useCallback((messageTxt) => {
         setLogMessages((prevMessages) => [...prevMessages, { messageTxt, key: prevMessages.length }]);
@@ -84,6 +84,7 @@ const CollectTemperature = () => {
             }
             if (messageTxt.data.includes('TEMP_DATA:')) {
                 setTemperature(JSON.parse(messageTxt.data?.split(':')[1]) || []);
+                setIsCollecting(false);
             }
             if (messageTxt.data.includes('GPS_DATA:')) {
                 const parsedData = JSON.parse(messageTxt.data?.split('GPS_DATA:')[1]) || {};
@@ -132,18 +133,105 @@ const CollectTemperature = () => {
         [addLogMessage]
     );
 
+    // Keyboard control handlers
+    const handleKeyDown = useCallback((event) => {
+        if (keysPressed.current.has(event.key.toLowerCase())) return; // Prevent key repeat
+        keysPressed.current.add(event.key.toLowerCase());
+        
+        switch (event.key.toLowerCase()) {
+            // Movement controls (Arrow keys)
+            case 'arrowup':
+                event.preventDefault();
+                sendCommand('backward');
+                break;
+            case 'arrowdown':
+                event.preventDefault();
+                sendCommand('forward');
+                break;
+            case 'arrowleft':
+                event.preventDefault();
+                sendCommand('right');
+                break;
+            case 'arrowright':
+                event.preventDefault();
+                sendCommand('left');
+                break;
+            // Camera controls (WASD)
+            case 'w':
+                event.preventDefault();
+                sendCommand('V_TURN_CAM:65');
+                break;
+            case 's':
+                event.preventDefault();
+                sendCommand('V_TURN_CAM:125');
+                break;
+            case 'a':
+                event.preventDefault();
+                sendCommand('H_TURN_CAM:125');
+                break;
+            case 'd':
+                event.preventDefault();
+                sendCommand('H_TURN_CAM:65');
+                break;
+            // Emergency stop
+            case ' ':
+            case 'escape':
+                event.preventDefault();
+                sendCommand('stop');
+                break;
+            default:
+                break;
+        }
+    }, [sendCommand]);
+
+    const handleKeyUp = useCallback((event) => {
+        keysPressed.current.delete(event.key.toLowerCase());
+
+        switch (event.key.toLowerCase()) {
+            // Stop movement when arrow keys are released
+            case 'arrowup':
+            case 'arrowdown':
+            case 'arrowleft':
+            case 'arrowright':
+                event.preventDefault();
+                sendCommand('stop');
+                break;
+            // Reset camera position when WASD keys are released
+            case 'w':
+            case 's':
+                event.preventDefault();
+                sendCommand('V_TURN_CAM:90');
+                break;
+            case 'a':
+            case 'd':
+                event.preventDefault();
+                sendCommand('H_TURN_CAM:90');
+                break;
+            default:
+                break;
+        }
+    }, [sendCommand]);
+
     useEffect(() => {
         flipCam(camIP);
     }, [camIP, flipCam]);
 
     useEffect(() => {
         connectWebSocket();
+        
+        // Add keyboard event listeners
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        
         return () => {
             if (ws.current) {
                 ws.current.close();
             }
+            // Remove keyboard event listeners
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [connectWebSocket]);
+    }, [connectWebSocket, handleKeyDown, handleKeyUp]);
 
     useEffect(() => {
         if (scrollViewRef.current) {
@@ -151,573 +239,390 @@ const CollectTemperature = () => {
         }
     }, [logMessages]);
 
-    const buttonStyle = {
-        backgroundColor: '#4CAF50',
-        color: 'white',
-        padding: '15px 20px',
-        border: 'none',
-        borderRadius: '10px',
-        margin: '5px',
-        cursor: 'pointer',
-        fontSize: '16px',
-        fontWeight: 'bold',
-        transition: 'background-color 0.2s',
-    };
-
-    const controlButtonStyle = {
-        backgroundColor: '#2196F3',
-        color: 'white',
-        padding: '10px 15px',
-        border: 'none',
-        borderRadius: '5px',
-        margin: '2px',
-        cursor: 'pointer',
-        fontSize: '14px',
-    };
-
     return (
-        <>
-            <Row
-                justify="center"
-                style={{
-                    padding: '20px',
-                    backgroundColor: '#f0f2f5',
-                    borderRadius: '8px',
-                }}
-            >
-                <Col xs={24} lg={20} xl={18}>
+        <div style={{ 
+            minHeight: '100vh', 
+            backgroundColor: '#f0f2f5', 
+            padding: '20px',
+            tabIndex: 0 // Make div focusable for keyboard events
+        }}>
+            <Row justify="center" gutter={[24, 24]}>
+                <Col xs={24} xxl={20}>
                     {/* Header */}
-                    <Row justify="space-between" align="middle" style={{ marginBottom: '20px' }}>
-                        <Col flex="auto" style={{ textAlign: 'center' }}>
-                            <h2 style={{ margin: 0 }}>Thermal Camera Temperature Collection</h2>
-                        </Col>
-                    </Row>
+                    <Card style={{ marginBottom: '24px', textAlign: 'center' }}>
+                        <Title level={2} style={{ margin: 0, color: '#1890ff' }}>
+                            <CameraOutlined style={{ marginRight: '12px' }} />
+                            Manual Temperature Collection System
+                        </Title>
+                        <Text type="secondary">Use keyboard controls: Arrow keys for movement, WASD for camera, Space/Esc for stop</Text>
+                    </Card>
 
                     {/* Connection Status */}
-                    <Row justify="center" style={{ marginBottom: '20px' }}>
-                        <Col>
-                            <span
-                                style={{
-                                    fontSize: '16px',
-                                    fontWeight: 'bold',
-                                    color: socketReady ? 'green' : 'red',
-                                }}
-                            >
-                                {socketReady ? 'Connected' : 'Disconnected'}
-                            </span>
-                        </Col>
-                    </Row>
+                    <Card style={{ marginBottom: '24px' }}>
+                        <Alert
+                            message={socketReady ? "System Connected" : "System Disconnected"}
+                            description={socketReady ? "Ready to collect temperature data" : "Attempting to reconnect..."}
+                            type={socketReady ? "success" : "error"}
+                            showIcon
+                            style={{ marginBottom: 0 }}
+                        />
+                    </Card>
 
-                    {/* Camera Control Section */}
-                    {camIP ? (
-                        <Row style={{ marginBottom: '30px' }}>
-                            <Col span={24}>
-                                <h3>Camera Control</h3>
-                                <Row justify="center" gutter={[0, 16]}>
-                                    {/* UP Button */}
-                                    <Col span={24} style={{ textAlign: 'center' }}>
-                                        <Button
-                                            style={controlButtonStyle}
-                                            onMouseDown={() => sendCommand('V_TURN_CAM:65')}
-                                            onMouseUp={() => sendCommand('V_TURN_CAM:90')}
-                                            onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
-                                        >
-                                            ↑ UP
-                                        </Button>
-                                    </Col>
-
-                                    {/* Middle Row with Left, Camera View, and Right */}
-                                    <Col span={24}>
-                                        <Row justify="center" align="middle" gutter={16}>
-                                            {/* LEFT Button */}
-                                            <Col>
+                    <Row gutter={[24, 24]}>
+                        {/* Camera Control Panel */}
+                        <Col xs={24} lg={12}>
+                            <Card title={<><CameraOutlined /> Camera Control (WASD)</>} style={{ height: '100%' }}>
+                                {camIP ? (
+                                    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                                        {/* Camera Feed */}
+                                        <div style={{ textAlign: 'center' }}>
+                                            <div style={{
+                                                width: '100%',
+                                                maxWidth: '400px',
+                                                aspectRatio: '4/3',
+                                                border: '3px solid #1890ff',
+                                                borderRadius: '12px',
+                                                overflow: 'hidden',
+                                                position: 'relative',
+                                                margin: '0 auto',
+                                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                                            }}>
+                                                <iframe
+                                                    src={`http://${camIP}:81/stream`}
+                                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                                    title="Camera Stream"
+                                                    onError={() => setCamIP('')}
+                                                />
                                                 <Button
-                                                    style={controlButtonStyle}
-                                                    onMouseDown={() => sendCommand('H_TURN_CAM:125')}
-                                                    onMouseUp={() => sendCommand('H_TURN_CAM:90')}
-                                                    onMouseLeave={() => sendCommand('H_TURN_CAM:90')}
-                                                >
-                                                    ← LEFT
-                                                </Button>
-                                            </Col>
-
-                                            {/* Camera View */}
-                                            <Col>
-                                                <div
+                                                    size="small"
+                                                    type="primary"
+                                                    danger
+                                                    onClick={() => setCamIP('')}
                                                     style={{
-                                                        width: '320px',
-                                                        height: '240px',
-                                                        border: '2px solid #ccc',
-                                                        borderRadius: '8px',
-                                                        overflow: 'hidden',
-                                                        position: 'relative',
+                                                        position: 'absolute',
+                                                        top: '8px',
+                                                        right: '8px'
                                                     }}
                                                 >
-                                                    <iframe
-                                                        src={`http://${camIP}:81/stream`}
-                                                        style={{
-                                                            width: '100%',
-                                                            height: '100%',
-                                                            border: 'none',
-                                                        }}
-                                                        title="Camera Stream"
-                                                        onError={() => setCamIP('')}
-                                                    />
-                                                    <div
-                                                        style={{
-                                                            position: 'absolute',
-                                                            top: '5px',
-                                                            right: '5px',
-                                                            backgroundColor: 'rgba(0,0,0,0.7)',
-                                                            color: 'white',
-                                                            padding: '2px 8px',
-                                                            borderRadius: '4px',
-                                                            fontSize: '12px',
-                                                            cursor: 'pointer',
-                                                        }}
-                                                        onClick={() => setCamIP('')}
-                                                    >
-                                                        Reset Camera
-                                                    </div>
-                                                </div>
-                                            </Col>
-
-                                            {/* RIGHT Button */}
-                                            <Col>
-                                                <Button
-                                                    style={controlButtonStyle}
-                                                    onMouseDown={() => sendCommand('H_TURN_CAM:65')}
-                                                    onMouseUp={() => sendCommand('H_TURN_CAM:90')}
-                                                    onMouseLeave={() => sendCommand('H_TURN_CAM:90')}
-                                                >
-                                                    RIGHT →
+                                                    Reset
                                                 </Button>
-                                            </Col>
-                                        </Row>
-                                    </Col>
+                                            </div>
+                                        </div>
 
-                                    {/* DOWN Button */}
-                                    <Col span={24} style={{ textAlign: 'center' }}>
-                                        <Button
-                                            style={controlButtonStyle}
-                                            onMouseDown={() => sendCommand('V_TURN_CAM:125')}
-                                            onMouseUp={() => sendCommand('V_TURN_CAM:90')}
-                                            onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
+                                        {/* Camera Control Buttons */}
+                                        <div style={{ textAlign: 'center' }}>
+                                            <Space direction="vertical" size="small">
+                                                <Button
+                                                    type="primary"
+                                                    size="large"
+                                                    onMouseDown={() => sendCommand('V_TURN_CAM:65')}
+                                                    onMouseUp={() => sendCommand('V_TURN_CAM:90')}
+                                                    onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
+                                                    style={{ width: '80px' }}
+                                                >
+                                                    ↑ W
+                                                </Button>
+                                                <Space size="small">
+                                                    <Button
+                                                        type="primary"
+                                                        size="large"
+                                                        onMouseDown={() => sendCommand('H_TURN_CAM:125')}
+                                                        onMouseUp={() => sendCommand('H_TURN_CAM:90')}
+                                                        onMouseLeave={() => sendCommand('H_TURN_CAM:90')}
+                                                        style={{ width: '80px' }}
+                                                    >
+                                                        ← A
+                                                    </Button>
+                                                    <Button
+                                                        type="primary"
+                                                        size="large"
+                                                        onMouseDown={() => sendCommand('H_TURN_CAM:65')}
+                                                        onMouseUp={() => sendCommand('H_TURN_CAM:90')}
+                                                        onMouseLeave={() => sendCommand('H_TURN_CAM:90')}
+                                                        style={{ width: '80px' }}
+                                                    >
+                                                        D →
+                                                    </Button>
+                                                </Space>
+                                                <Button
+                                                    type="primary"
+                                                    size="large"
+                                                    onMouseDown={() => sendCommand('V_TURN_CAM:125')}
+                                                    onMouseUp={() => sendCommand('V_TURN_CAM:90')}
+                                                    onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
+                                                    style={{ width: '80px' }}
+                                                >
+                                                    ↓ S
+                                                </Button>
+                                            </Space>
+                                        </div>
+                                    </Space>
+                                ) : (
+                                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                                        <div style={{
+                                            width: '200px',
+                                            height: '150px',
+                                            backgroundColor: '#f5f5f5',
+                                            border: '2px dashed #d9d9d9',
+                                            borderRadius: '8px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            margin: '0 auto 20px'
+                                        }}>
+                                            <Text type="secondary">Camera Loading...</Text>
+                                        </div>
+                                        <Button 
+                                            type="primary" 
+                                            onClick={() => sendCommand('GET_CAM_IP')}
+                                            loading={!socketReady}
                                         >
-                                            ↓ DOWN
+                                            Refresh Camera
                                         </Button>
-                                    </Col>
-                                </Row>
-                            </Col>
-                        </Row>
-                    ) : (
-                        <Row justify="center" style={{ marginBottom: '30px' }}>
-                            <Col style={{ textAlign: 'center' }}>
-                                <p>Waiting for Camera...</p>
-                                <Button
-                                    style={{ ...buttonStyle, backgroundColor: 'grey' }}
-                                    onClick={() => sendCommand('GET_CAM_IP')}
-                                >
-                                    Refresh Camera
-                                </Button>
-                            </Col>
-                        </Row>
-                    )}
-                    {/* Movement Control Section */}
-                    <Row style={{ marginBottom: '30px' }}>
-                        <Col span={24}>
-                            <h3>Vehicle Movement Control</h3>
-                            <Row justify="center" gutter={[16, 16]}>
-                                {/* Forward Button */}
-                                <Col xs={24} sm={12} md={6}>
+                                    </div>
+                                )}
+                            </Card>
+                        </Col>
+
+                        {/* Vehicle Movement Panel */}
+                        <Col xs={24} lg={12}>
+                            <Card title={<><CarOutlined /> Vehicle Movement (Arrow Keys)</>} style={{ height: '100%' }}>
+                                <Space direction="vertical" size="large" style={{ width: '100%', textAlign: 'center' }}>
+                                    {/* Movement Controls */}
+                                    <Space direction="vertical" size="middle">
+                                        <Button
+                                            type="primary"
+                                            size="large"
+                                            onMouseDown={() => sendCommand('backward')}
+                                            onMouseUp={() => sendCommand('stop')}
+                                            onMouseLeave={() => sendCommand('stop')}
+                                            style={{ 
+                                                width: '120px', 
+                                                height: '60px', 
+                                                fontSize: '16px',
+                                                backgroundColor: '#52c41a'
+                                            }}
+                                        >
+                                            ↑ Forward
+                                        </Button>
+                                        <Space size="middle">
+                                            <Button
+                                                type="primary"
+                                                size="large"
+                                                onMouseDown={() => sendCommand('right')}
+                                                onMouseUp={() => sendCommand('stop')}
+                                                onMouseLeave={() => sendCommand('stop')}
+                                                style={{ 
+                                                    width: '100px', 
+                                                    height: '60px', 
+                                                    fontSize: '16px',
+                                                    backgroundColor: '#1890ff'
+                                                }}
+                                            >
+                                                ← Left
+                                            </Button>
+                                            <Button
+                                                type="primary"
+                                                size="large"
+                                                onMouseDown={() => sendCommand('left')}
+                                                onMouseUp={() => sendCommand('stop')}
+                                                onMouseLeave={() => sendCommand('stop')}
+                                                style={{ 
+                                                    width: '100px', 
+                                                    height: '60px', 
+                                                    fontSize: '16px',
+                                                    backgroundColor: '#1890ff'
+                                                }}
+                                            >
+                                                Right →
+                                            </Button>
+                                        </Space>
+                                        <Button
+                                            type="primary"
+                                            size="large"
+                                            onMouseDown={() => sendCommand('forward')}
+                                            onMouseUp={() => sendCommand('stop')}
+                                            onMouseLeave={() => sendCommand('stop')}
+                                            style={{ 
+                                                width: '120px', 
+                                                height: '60px', 
+                                                fontSize: '16px',
+                                                backgroundColor: '#fa8c16'
+                                            }}
+                                        >
+                                            ↓ Backward
+                                        </Button>
+                                    </Space>
+
+                                    {/* Emergency Stop */}
                                     <Button
-                                        style={{
-                                            ...buttonStyle,
-                                            backgroundColor: '#4CAF50',
-                                            width: '100%',
-                                            height: '60px',
-                                            fontSize: '18px',
-                                        }}
-                                        onMouseDown={() => sendCommand('backward')}
-                                        onMouseUp={() => sendCommand('stop')}
-                                        onMouseLeave={() => sendCommand('stop')}
-                                    >
-                                        ↑ Forward
-                                    </Button>
-                                </Col>
-                            </Row>
-                            <Row justify="center" gutter={[16, 16]} style={{ marginTop: '10px' }}>
-                                {/* Left Button */}
-                                <Col xs={12} sm={6} md={6}>
-                                    <Button
-                                        style={{
-                                            ...buttonStyle,
-                                            backgroundColor: '#2196F3',
-                                            width: '100%',
-                                            height: '60px',
-                                            fontSize: '18px',
-                                        }}
-                                        onMouseDown={() => sendCommand('right')}
-                                        onMouseUp={() => sendCommand('stop')}
-                                        onMouseLeave={() => sendCommand('stop')}
-                                    >
-                                        ← Left
-                                    </Button>
-                                </Col>
-                                {/* Right Button */}
-                                <Col xs={12} sm={6} md={6}>
-                                    <Button
-                                        style={{
-                                            ...buttonStyle,
-                                            backgroundColor: '#f44336',
-                                            width: '100%',
-                                            height: '60px',
-                                            fontSize: '18px',
-                                        }}
-                                        onMouseDown={() => sendCommand('left')}
-                                        onMouseUp={() => sendCommand('stop')}
-                                        onMouseLeave={() => sendCommand('stop')}
-                                    >
-                                        Right →
-                                    </Button>
-                                </Col>
-                            </Row>
-                            <Row justify="center" gutter={[16, 16]} style={{ marginTop: '10px' }}>
-                                {/* Backward Button */}
-                                <Col xs={24} sm={12} md={6}>
-                                    <Button
-                                        style={{
-                                            ...buttonStyle,
-                                            backgroundColor: '#FF9800',
-                                            width: '100%',
-                                            height: '60px',
-                                            fontSize: '18px',
-                                        }}
-                                        onMouseDown={() => sendCommand('forward')}
-                                        onMouseUp={() => sendCommand('stop')}
-                                        onMouseLeave={() => sendCommand('stop')}
-                                    >
-                                        ↓ Backward
-                                    </Button>
-                                </Col>
-                            </Row>
-                            <Row justify="center" style={{ marginTop: '20px' }}>
-                                {/* Emergency Stop Button */}
-                                <Col xs={24} sm={12} md={8}>
-                                    <Button
-                                        style={{
-                                            ...buttonStyle,
-                                            backgroundColor: '#d32f2f',
-                                            width: '100%',
-                                            height: '50px',
-                                            fontSize: '16px',
-                                            fontWeight: 'bold',
-                                        }}
+                                        danger
+                                        size="large"
+                                        icon={<StopOutlined />}
                                         onClick={() => sendCommand('stop')}
+                                        style={{ 
+                                            width: '200px', 
+                                            height: '50px', 
+                                            fontSize: '16px',
+                                            fontWeight: 'bold'
+                                        }}
                                     >
-                                        🛑 EMERGENCY STOP
+                                        EMERGENCY STOP
                                     </Button>
-                                </Col>
-                            </Row>
+                                </Space>
+                            </Card>
                         </Col>
                     </Row>
 
-                    {/* Temperature Collection */}
-                    <Row style={{ marginBottom: '30px' }}>
-                        <Col span={24}>
-                            <h3>Temperature Data Collection</h3>
-                            <Row justify="center">
-                                <Col>
+                    {/* Temperature Collection Panel */}
+                    <Card 
+                        title={<><EnvironmentOutlined /> Temperature Data Collection</>} 
+                        style={{ marginTop: '24px' }}
+                    >
+                        <Row gutter={[24, 24]} align="middle">
+                            <Col xs={24} md={8}>
+                                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                                     <Button
-                                        style={{ ...buttonStyle, backgroundColor: '#b98e34' }}
+                                        type="primary"
+                                        size="large"
+                                        loading={isCollecting}
                                         onClick={() => {
+                                            setIsCollecting(true);
                                             sendCommand('get_temp');
                                             setTemperature([]);
                                         }}
+                                        style={{ 
+                                            width: '100%', 
+                                            height: '60px', 
+                                            fontSize: '18px',
+                                            backgroundColor: '#fa8c16',
+                                            borderColor: '#fa8c16'
+                                        }}
                                     >
-                                        Collect Temperature Data
+                                        {isCollecting ? 'Collecting...' : 'Collect Temperature'}
                                     </Button>
-                                    {Array.isArray(temperature) && temperature.length > 0 && (
-                                        <div
-                                            style={{
-                                                marginTop: '20px',
-                                                padding: '15px',
-                                                backgroundColor: '#e8f5e8',
-                                                borderRadius: '8px',
-                                                border: '2px solid #4CAF50',
-                                            }}
-                                        >
-                                            <h4
-                                                style={{
-                                                    margin: '0 0 10px 0',
-                                                    color: '#2e7d32',
-                                                }}
-                                            >
-                                                Temperature Reading
-                                            </h4>
-                                            <div
-                                                style={{
-                                                    fontSize: '24px',
-                                                    fontWeight: 'bold',
-                                                    color: '#1b5e20',
-                                                }}
-                                            >
-                                                {(
-                                                    temperature.reduce((x, y) => x + y, 0) /
-                                                    temperature.length
-                                                )?.toFixed(2)}
-                                                °C
-                                            </div>
-                                            <div
-                                                style={{
-                                                    fontSize: '14px',
-                                                    color: '#666',
-                                                    marginTop: '5px',
-                                                }}
-                                            >
-                                                Based on {temperature.length} data points
-                                            </div>
-                                        </div>
-                                    )}
-                                </Col>
-                            </Row>
+                                </Space>
+                            </Col>
+                            <Col xs={24} md={16}>
+                                {Array.isArray(temperature) && temperature.length > 0 ? (
+                                    <Card size="small" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                                        <Row align="middle" gutter={16}>
+                                            <Col>
+                                                <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#52c41a' }}>
+                                                    {(temperature.reduce((x, y) => x + y, 0) / temperature.length)?.toFixed(2)}°C
+                                                </div>
+                                            </Col>
+                                            <Col flex="auto">
+                                                <div>
+                                                    <Text strong>Latest Temperature Reading</Text><br />
+                                                    <Text type="secondary">Based on {temperature.length} data points</Text>
+                                                </div>
+                                            </Col>
+                                        </Row>
+                                    </Card>
+                                ) : (
+                                    <div style={{ 
+                                        padding: '20px', 
+                                        textAlign: 'center', 
+                                        backgroundColor: '#fafafa', 
+                                        borderRadius: '8px',
+                                        border: '2px dashed #d9d9d9'
+                                    }}>
+                                        <Text type="secondary">No temperature data collected yet</Text>
+                                    </div>
+                                )}
+                            </Col>
+                        </Row>
+                    </Card>
+
+                    {/* Sensor Data Panel */}
+                    <Row gutter={[24, 24]} style={{ marginTop: '24px' }}>
+                        {/* GPS Data */}
+                        <Col xs={24} lg={12}>
+                            <Card title={<><EnvironmentOutlined /> GPS Location</>} size="small">
+                                <Row gutter={[8, 8]}>
+                                    <Col span={12}><Text strong>Latitude:</Text> {gpsData.latitude?.toFixed(6)}</Col>
+                                    <Col span={12}><Text strong>Longitude:</Text> {gpsData.longitude?.toFixed(6)}</Col>
+                                    <Col span={12}><Text strong>Speed:</Text> {gpsData.speed?.toFixed(1)} km/h</Col>
+                                    <Col span={12}><Text strong>Satellites:</Text> {gpsData.satellites}</Col>
+                                    <Col span={12}><Text strong>Altitude:</Text> {gpsData.altitude?.toFixed(1)}m</Col>
+                                    <Col span={12}><Text strong>HDOP:</Text> {gpsData.hdop?.toFixed(2)}</Col>
+                                </Row>
+                            </Card>
+                        </Col>
+
+                        {/* IMU Data */}
+                        <Col xs={24} lg={12}>
+                            <Card title={<><DashboardOutlined /> IMU Sensor</>} size="small">
+                                <Row gutter={[8, 8]}>
+                                    <Col span={8}>
+                                        <Text strong>Gyro X:</Text><br />
+                                        {gyroData.gyro_x?.toFixed(2)}°/s
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text strong>Gyro Y:</Text><br />
+                                        {gyroData.gyro_y?.toFixed(2)}°/s
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text strong>Gyro Z:</Text><br />
+                                        {gyroData.gyro_z?.toFixed(2)}°/s
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text strong>Accel X:</Text><br />
+                                        {gyroData.accel_x?.toFixed(2)}g
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text strong>Accel Y:</Text><br />
+                                        {gyroData.accel_y?.toFixed(2)}g
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text strong>Accel Z:</Text><br />
+                                        {gyroData.accel_z?.toFixed(2)}g
+                                    </Col>
+                                    <Col span={12}>
+                                        <Text strong>Tilt:</Text> {Math.sqrt(gyroData.angle_x ** 2 + gyroData.angle_y ** 2)?.toFixed(1)}°
+                                    </Col>
+                                    <Col span={12}>
+                                        <Text strong>IMU Temp:</Text> {gyroData.temp?.toFixed(1)}°C
+                                    </Col>
+                                </Row>
+                            </Card>
                         </Col>
                     </Row>
 
-                    {/* GPS Data Display */}
-                    <Row style={{ marginTop: '20px' }}>
-                        <Col span={24}>
-                            <div
-                                style={{
-                                    padding: '15px',
-                                    backgroundColor: '#e0e0e0',
-                                    borderRadius: '8px',
-                                }}
-                            >
-                                <h3 style={{ marginTop: 0 }}>GPS Location Data</h3>
-                                <Row gutter={[16, 8]}>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div>
-                                            <strong>Latitude:</strong> {gpsData.latitude?.toFixed(6)}
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div>
-                                            <strong>Longitude:</strong> {gpsData.longitude?.toFixed(6)}
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div>
-                                            <strong>Speed:</strong> {gpsData.speed?.toFixed(2)} km/h
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div>
-                                            <strong>Altitude:</strong> {gpsData.altitude?.toFixed(2)}
-                                            meters
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div>
-                                            <strong>HDOP:</strong> {gpsData.hdop?.toFixed(2)}
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div>
-                                            <strong>Satellites:</strong> {gpsData.satellites}
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={24} md={16}>
-                                        <div>
-                                            <strong>Time:</strong> {gpsData.time}
-                                        </div>
-                                    </Col>
-                                </Row>
-                            </div>
-                        </Col>
-                    </Row>
-                    {/* Gyroscope and Accelerometer Data Display */}
-                    <Row style={{ marginTop: '20px' }}>
-                        <Col span={24}>
-                            <div
-                                style={{
-                                    padding: '15px',
-                                    backgroundColor: '#e8f4fd',
-                                    borderRadius: '8px',
-                                }}
-                            >
-                                <h3 style={{ marginTop: 0 }}>IMU Sensor Data</h3>
-                                <Row gutter={[16, 8]}>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div style={{ marginBottom: '10px' }}>
-                                            <h4 style={{ margin: '0 0 5px 0', color: '#1976d2' }}>
-                                                Gyroscope (°/s)
-                                            </h4>
-                                            <div>
-                                                <strong>X:</strong> {gyroData.gyro_x?.toFixed(3)}
-                                            </div>
-                                            <div>
-                                                <strong>Y:</strong> {gyroData.gyro_y?.toFixed(3)}
-                                            </div>
-                                            <div>
-                                                <strong>Z:</strong> {gyroData.gyro_z?.toFixed(3)}
-                                            </div>
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div style={{ marginBottom: '10px' }}>
-                                            <h4 style={{ margin: '0 0 5px 0', color: '#1976d2' }}>
-                                                Accelerometer (g)
-                                            </h4>
-                                            <div>
-                                                <strong>X:</strong> {gyroData.accel_x?.toFixed(3)}
-                                            </div>
-                                            <div>
-                                                <strong>Y:</strong> {gyroData.accel_y?.toFixed(3)}
-                                            </div>
-                                            <div>
-                                                <strong>Z:</strong> {gyroData.accel_z?.toFixed(3)}
-                                            </div>
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div style={{ marginBottom: '10px' }}>
-                                            <h4 style={{ margin: '0 0 5px 0', color: '#1976d2' }}>
-                                                IMU Temperature
-                                            </h4>
-                                            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>
-                                                {gyroData.temp?.toFixed(2)}°C
-                                            </div>
-                                        </div>
-                                    </Col>
-                                </Row>
-                                <Row gutter={[16, 8]} style={{ marginTop: '15px' }}>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div style={{ marginBottom: '10px' }}>
-                                            <h4 style={{ margin: '0 0 5px 0', color: '#c2185b' }}>
-                                                Accel Angles (°)
-                                            </h4>
-                                            <div>
-                                                <strong>X:</strong> {gyroData.accel_angle_x?.toFixed(3)}
-                                            </div>
-                                            <div>
-                                                <strong>Y:</strong> {gyroData.accel_angle_y?.toFixed(3)}
-                                            </div>
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div style={{ marginBottom: '10px' }}>
-                                            <h4 style={{ margin: '0 0 5px 0', color: '#388e3c' }}>
-                                                Fusion Angles (°)
-                                            </h4>
-                                            <div>
-                                                <strong>X (Tilt X):</strong> {gyroData.angle_x?.toFixed(3)}
-                                            </div>
-                                            <div>
-                                                <strong>Y (Tilt Y):</strong> {gyroData.angle_y?.toFixed(3)}
-                                            </div>
-                                            <div>
-                                                <strong>Z (Rotation):</strong> {gyroData.angle_z?.toFixed(3)}
-                                            </div>
-                                        </div>
-                                    </Col>
-                                    <Col xs={24} sm={12} md={8}>
-                                        <div style={{ marginBottom: '10px' }}>
-                                            <h4 style={{ margin: '0 0 5px 0', color: '#f57c00' }}>
-                                                Orientation Status
-                                            </h4>
-                                            <div style={{ fontSize: '14px' }}>
-                                                <div>
-                                                    <strong>Tilt:</strong>
-                                                    {Math.sqrt(
-                                                        gyroData.angle_x ** 2 + gyroData.angle_y ** 2
-                                                    )?.toFixed(1)}
-                                                    °
-                                                </div>
-                                                <div>
-                                                    <strong>Motion:</strong>
-                                                    {Math.sqrt(
-                                                        gyroData.gyro_x ** 2 +
-                                                            gyroData.gyro_y ** 2 +
-                                                            gyroData.gyro_z ** 2
-                                                    ) > 1
-                                                        ? 'Active'
-                                                        : 'Stable'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </Col>
-                                </Row>
-                            </div>
-                        </Col>
-                    </Row>
-                    {/* Instructions */}
-                    <Row style={{ marginTop: '30px' }}>
-                        <Col span={24}>
-                            <div
-                                style={{
-                                    padding: '15px',
-                                    backgroundColor: '#fff3cd',
-                                    border: '1px solid #ffeaa7',
-                                    borderRadius: '8px',
-                                }}
-                            >
-                                <h4 style={{ marginTop: 0, color: '#856404' }}>Instructions:</h4>
-                                <ul style={{ color: '#856404' }}>
-                                    <li>
-                                        Ensure the thermal camera is properly calibrated before
-                                        collecting data
-                                    </li>
-                                    <li>
-                                        Use the camera controls to position the camera for optimal
-                                        readings
-                                    </li>
-                                    <li>
-                                        Click "Collect Temperature Data" to capture thermal measurements
-                                    </li>
-                                    <li>GPS data is automatically collected and displayed below</li>
-                                    <li>
-                                        Monitor the system logs for connection status and error messages
-                                    </li>
-                                </ul>
-                            </div>
-                        </Col>
-                    </Row>
-                    {/* System Logs */}
-                    <Row>
-                        <Col span={24}>
-                            <div style={{
-                                padding: '15px',
-                                backgroundColor: '#f8f9fa',
-                                border: '1px solid #dee2e6',
-                                borderRadius: '8px',
-                            }}>
-                                <h3 style={{ marginTop: 0, color: '#495057' }}>📋 System Logs</h3>
-                                <div
-                                    ref={scrollViewRef}
-                                    style={{
-                                        height: '200px',
-                                        overflowY: 'auto',
-                                        backgroundColor: '#000',
-                                        color: '#00ff00',
-                                        padding: '10px',
-                                        borderRadius: '4px',
-                                        fontFamily: 'monospace',
-                                        fontSize: '12px'
-                                    }}
-                                >
-                                    {logMessages.map((msg) => (
-                                        <div key={msg.key}>
-                                            [{new Date().toLocaleTimeString()}] {msg.messageTxt}
-                                        </div>
-                                    ))}
+                    {/* System Logs (Collapsible) */}
+                    <Card 
+                        title="System Logs" 
+                        style={{ marginTop: '24px' }}
+                    >
+                        <div
+                            ref={scrollViewRef}
+                            style={{
+                                height: '200px',
+                                overflowY: 'auto',
+                                backgroundColor: '#001529',
+                                color: '#52c41a',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                fontFamily: 'monospace',
+                                fontSize: '12px',
+                                border: '1px solid #d9d9d9',
+                                textAlign: 'left',
+                            }}
+                        >
+                            {logMessages.map((msg) => (
+                                <div key={msg.key} style={{ marginBottom: '2px' }}>
+                                    [{new Date().toLocaleTimeString()}] {msg.messageTxt}
                                 </div>
-                            </div>
-                        </Col>
-                    </Row>
+                            ))}
+                            {logMessages.length === 0 && (
+                                <Text type="secondary">No logs yet...</Text>
+                            )}
+                        </div>
+                    </Card>
                 </Col>
             </Row>
-        </>
+        </div>
     );
 };
 

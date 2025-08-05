@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Row, Col, Button, message } from 'antd';
+import { Row, Col, Button, message, Card, Typography } from 'antd';
+
+const { Text } = Typography;
 
 const wsUrl = 'wss://esp32.local:81';
 
@@ -342,33 +344,35 @@ const AutonomousNavigation = () => {
                         {/* System Logs */}
                         <Row>
                             <Col span={24}>
-                                <div style={{
-                                    padding: '15px',
-                                    backgroundColor: '#f8f9fa',
-                                    border: '1px solid #dee2e6',
-                                    borderRadius: '8px',
-                                }}>
-                                    <h3 style={{ marginTop: 0, color: '#495057' }}>📋 System Logs</h3>
+                                <Card 
+                                    title="System Logs" 
+                                    style={{ marginTop: '24px' }}
+                                >
                                     <div
                                         ref={scrollViewRef}
                                         style={{
                                             height: '200px',
                                             overflowY: 'auto',
-                                            backgroundColor: '#000',
-                                            color: '#00ff00',
-                                            padding: '10px',
-                                            borderRadius: '4px',
+                                            backgroundColor: '#001529',
+                                            color: '#52c41a',
+                                            padding: '12px',
+                                            borderRadius: '6px',
                                             fontFamily: 'monospace',
-                                            fontSize: '12px'
+                                            fontSize: '12px',
+                                            border: '1px solid #d9d9d9',
+                                            textAlign: 'left',
                                         }}
                                     >
                                         {logMessages.map((msg) => (
-                                            <div key={msg.key}>
+                                            <div key={msg.key} style={{ marginBottom: '2px' }}>
                                                 [{new Date().toLocaleTimeString()}] {msg.messageTxt}
                                             </div>
                                         ))}
+                                        {logMessages.length === 0 && (
+                                            <Text type="secondary">No logs yet...</Text>
+                                        )}
                                     </div>
-                                </div>
+                                </Card>
                             </Col>
                         </Row>
                     </div>

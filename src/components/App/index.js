@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import CollectTemperature from './Tempetature/CollectTemperature';
 import HeatIslandDetector from './HeatIslandDetector';
+import Segment from './Segmentation/Segment';
 
 const { Header, Content, Footer } = Layout;
 
@@ -24,8 +25,20 @@ const HeatScape = () => {
         {
             title: 'Segmentation',
             icon: <PartitionOutlined />,
-            content: 'Capture images from the thermal camera.',
+            content: <Segment />,
         },
+        {
+            title: 'Identify the Materials',
+            icon: <FileImageOutlined />,
+            content: 'Identify the materials in the captured images.',
+        },
+        {
+            title: 'Calculate surface area',
+            icon: <FileImageOutlined />,
+            content: 'Calculate the surface area of the identified materials.',
+        },
+
+
         {
             title: 'Collect Temperatures',
             icon: <FireOutlined />,

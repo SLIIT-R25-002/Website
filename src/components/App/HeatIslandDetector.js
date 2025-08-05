@@ -31,7 +31,7 @@ const HeatIslandDetector = () => {
   const addOrUpdateDataEntry = () => {
     const { locationType, material, temperature, humidity, area } = newEntry;
     if (!locationType || !material || !temperature || !humidity || !area) {
-      alert("Please fill in all fields");
+      setError("Please fill in all fields");
       return;
     }
 
@@ -53,6 +53,7 @@ const HeatIslandDetector = () => {
     }
 
     setNewEntry({ locationType: '', material: '', temperature: '', humidity: '', area: '' });
+    setError(null);
   };
 
   const startEditEntry = (index) => {
@@ -72,44 +73,41 @@ const HeatIslandDetector = () => {
   };
 
   const predictHeatIsland = async () => {
-  if (data.length === 0) {
-    alert("Please add at least one data entry");
-    return;
-  }
+    if (data.length === 0) {
+      setError("Please add at least one data entry");
+      return;
+    }
 
-  try {
-    setLoading(true);
-    setError(null);
-    const response = await axios.post('http://localhost:5000/predict', { data });
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await axios.post('http://localhost:5000/predict', { data });
+      const backendData = response.data;
 
-    const backendData = response.data;
+      const transformed = {
+        summary: {
+          avg_temperature: backendData.avg_temperature,
+          avg_humidity: backendData.avg_humidity,
+          heat_retaining_percent: backendData.heat_retaining_percent,
+          vegetation_percent: backendData.vegetation_percent,
+          final_decision: backendData.is_heat_island ? "Heat Island Detected" : "No Heat Island Detected"
+        },
+        detailed_results: backendData.detailed_predictions
+      };
 
-    // ✅ Wrap the backend response into expected structure
-    const transformed = {
-      summary: {
-        avg_temperature: backendData.avg_temperature,
-        avg_humidity: backendData.avg_humidity,
-        heat_retaining_percent: backendData.heat_retaining_percent,
-        vegetation_percent: backendData.vegetation_percent,
-        final_decision: backendData.is_heat_island ? "Heat Island Detected" : "No Heat Island Detected"
-      },
-      detailed_results: backendData.detailed_predictions
-    };
-
-    setResults(transformed);
-    setRecommendation(null);
-  } catch (err) {
-    setError(err.response?.data?.error || "An error occurred");
-    setResults(null);
-  } finally {
-    setLoading(false);
-  }
-};
-
+      setResults(transformed);
+      setRecommendation(null);
+    } catch (err) {
+      setError(err.response?.data?.error || "An error occurred");
+      setResults(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const requestRecommendation = async () => {
     if (!imageFile) {
-      alert("Please upload an image");
+      setError("Please upload an image");
       return;
     }
 
@@ -117,7 +115,7 @@ const HeatIslandDetector = () => {
     reader.onloadend = async () => {
       const base64Image = reader.result.split(",")[1];
       try {
-        setLoadingRecommendation(true); // 🔹 Start loading
+        setLoadingRecommendation(true);
         setError(null);
         const res = await axios.post('http://localhost:5000/recommend', {
           data,
@@ -127,7 +125,7 @@ const HeatIslandDetector = () => {
       } catch (err) {
         setError(err.response?.data?.error || "Recommendation failed");
       } finally {
-        setLoadingRecommendation(false); // 🔹 End loading
+        setLoadingRecommendation(false);
       }
     };
     reader.readAsDataURL(imageFile);
@@ -148,13 +146,7 @@ const HeatIslandDetector = () => {
               <Col md={4}>
                 <Form.Group>
                   <Form.Label>Location Type</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="locationType"
-                    value={newEntry.locationType}
-                    onChange={handleInputChange}
-                    placeholder="building"
-                  />
+                  <Form.Control type="text" name="locationType" value={newEntry.locationType} onChange={handleInputChange} placeholder="building" />
                 </Form.Group>
               </Col>
               <Col md={4}>
@@ -177,13 +169,7 @@ const HeatIslandDetector = () => {
               <Col md={4}>
                 <Form.Group>
                   <Form.Label>Temperature (°C)</Form.Label>
-                  <Form.Control
-                    type="number"
-                    name="temperature"
-                    value={newEntry.temperature}
-                    onChange={handleInputChange}
-                    placeholder="35"
-                  />
+                  <Form.Control type="number" name="temperature" value={newEntry.temperature} onChange={handleInputChange} placeholder="35" />
                 </Form.Group>
               </Col>
             </Row>
@@ -192,25 +178,13 @@ const HeatIslandDetector = () => {
               <Col md={4}>
                 <Form.Group>
                   <Form.Label>Humidity (%)</Form.Label>
-                  <Form.Control
-                    type="number"
-                    name="humidity"
-                    value={newEntry.humidity}
-                    onChange={handleInputChange}
-                    placeholder="45"
-                  />
+                  <Form.Control type="number" name="humidity" value={newEntry.humidity} onChange={handleInputChange} placeholder="45" />
                 </Form.Group>
               </Col>
               <Col md={4}>
                 <Form.Group>
                   <Form.Label>Area (sq. meters)</Form.Label>
-                  <Form.Control
-                    type="number"
-                    name="area"
-                    value={newEntry.area}
-                    onChange={handleInputChange}
-                    placeholder="5000"
-                  />
+                  <Form.Control type="number" name="area" value={newEntry.area} onChange={handleInputChange} placeholder="5000" />
                 </Form.Group>
               </Col>
               <Col md={4} className="d-flex align-items-end">
@@ -249,7 +223,7 @@ const HeatIslandDetector = () => {
               </thead>
               <tbody>
                 {data.map((entry, index) => (
-                  <tr key={index}>
+                  <tr key={JSON.stringify(entry)}>
                     <td>{entry[0]}</td>
                     <td>{entry[1]}</td>
                     <td>{entry[2]}</td>
@@ -286,8 +260,8 @@ const HeatIslandDetector = () => {
                 <Card>
                   <Card.Header>Location Details</Card.Header>
                   <Card.Body>
-                    {Array.isArray(results.detailed_results) && results.detailed_results.map((item, index) => (
-                      <div key={index} className={`mb-2 ${item.heat_island === 'Yes' ? 'text-danger' : 'text-success'}`}>
+                    {Array.isArray(results.detailed_results) && results.detailed_results.map((item) => (
+                      <div key={JSON.stringify(item)} className={`mb-2 ${item.heat_island === 'Yes' ? 'text-danger' : 'text-success'}`}>
                         <strong>{item.location}</strong>
                         <span className="ms-2 badge bg-secondary">
                           {item.heat_island === 'Yes' ? 'Heat Island' : 'No Heat Island'}
@@ -333,7 +307,7 @@ const HeatIslandDetector = () => {
         </Card>
       )}
 
-      {/* Loading Spinner for Recommendation */}
+      {/* Recommendation Loader */}
       {loadingRecommendation && (
         <div className="text-center my-4">
           <div className="spinner-border text-warning" role="status" />
@@ -351,7 +325,7 @@ const HeatIslandDetector = () => {
         </Card>
       )}
 
-
+      {/* Error Alert */}
       {error && <Alert variant="danger" className="mt-4">{error}</Alert>}
     </Container>
   );

@@ -5,7 +5,7 @@ import CollectTemperature from './CollectTemperature';
 import AutonomousNavigation from './AutonomousNavigation';
 
 const Temperature = () => {
-    const [currentMode, setCurrentMode] = useState('manual'); // Default to manual mode
+    const [currentMode, setCurrentMode] = useState('autonomous'); // Default to autonomous mode
 
     if (currentMode === 'autonomous') {
         return (
@@ -27,7 +27,7 @@ const Temperature = () => {
                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
                     }}
                 >
-                    Switch to Manual
+                    Manual Override
                 </Button>
                 <AutonomousNavigation />
             </div>

@@ -1,7 +1,18 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Row, Col, Button, message, Card, Typography } from 'antd';
+import { Row, Col, Button, message, Card, Typography, Space, Progress, Statistic, Input, Divider } from 'antd';
+import { 
+    RobotOutlined, 
+    EnvironmentOutlined, 
+    AimOutlined, 
+    PlayCircleOutlined, 
+    StopOutlined,
+    CompassOutlined,
+    DashboardOutlined,
+    WifiOutlined,
+    
+} from '@ant-design/icons';
 
-const { Text } = Typography;
+const { Title, Text } = Typography;
 
 const wsUrl = 'wss://esp32.local:81';
 
@@ -25,6 +36,7 @@ const AutonomousNavigation = () => {
         currentHeading: 0,
         headingError: 0
     });
+    const [isNavigating, setIsNavigating] = useState(false);
 
     const ws = useRef(null);
     const scrollViewRef = useRef(null);
@@ -81,17 +93,23 @@ const AutonomousNavigation = () => {
             }
             if (messageTxt.data.includes('TARGET_REACHED')) {
                 setAutonomousMode(false);
+                setIsNavigating(false);
                 addLogMessage('🎯 Target reached!');
+                message.success('Target reached successfully!');
             }
             if (messageTxt.data.includes('TARGET_SET:')) {
                 const coords = messageTxt.data.split('TARGET_SET:')[1].split(',');
                 setTargetCoords({ lat: coords[0], lng: coords[1] });
                 setAutonomousMode(true);
+                setIsNavigating(true);
                 addLogMessage(`🎯 Target set: ${coords[0]}, ${coords[1]}`);
+                message.success('Navigation started!');
             }
             if (messageTxt.data.includes('AUTO_STOPPED')) {
                 setAutonomousMode(false);
+                setIsNavigating(false);
                 addLogMessage('🛑 Autonomous mode stopped');
+                message.info('Navigation stopped');
             }
             if (messageTxt.data.includes('NAV_DATA:')) {
                 const parsedData = JSON.parse(messageTxt.data?.split('NAV_DATA:')[1]) || {};
@@ -121,261 +139,363 @@ const AutonomousNavigation = () => {
         }
     }, [logMessages]);
 
-    const buttonStyle = {
-        backgroundColor: '#4CAF50',
-        color: 'white',
-        padding: '15px 20px',
-        border: 'none',
-        borderRadius: '10px',
-        margin: '5px',
-        cursor: 'pointer',
-        fontSize: '16px',
-        fontWeight: 'bold',
-        transition: 'background-color 0.2s',
-    };
+    // Add CSS animation for pulse effect
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0% { opacity: 1; }
+                50% { opacity: 0.5; }
+                100% { opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        return () => {
+            document.head.removeChild(style);
+        };
+    }, []);
 
     return (
         <div style={{ 
             minHeight: '100vh', 
-            backgroundColor: '#f5f5f5',
+            backgroundColor: '#f0f2f5',
             padding: '20px'
         }}>
-            <Row justify="center">
-                <Col xs={24} lg={20} xl={18}>
-                    <div style={{
-                        backgroundColor: '#fff',
-                        borderRadius: '12px',
-                        padding: '30px',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                    }}>
-                        <h1 style={{ 
-                            textAlign: 'center', 
-                            marginBottom: '30px',
-                            color: '#1976d2'
-                        }}>
-                            🤖 Autonomous Navigation System
-                        </h1>
+            <Row justify="center" gutter={[24, 24]}>
+                <Col xs={24} xxl={20}>
+                    {/* Header */}
+                    <Card style={{ marginBottom: '24px', textAlign: 'center' }}>
+                        <Title level={2} style={{ margin: 0, color: '#52c41a' }}>
+                            <RobotOutlined style={{ marginRight: '12px' }} />
+                            Autonomous Navigation System
+                        </Title>
+                        <Text type="secondary">Intelligent vehicle navigation with real-time GPS tracking</Text>
+                    </Card>
 
+                    {/* Status Dashboard */}
+                    <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
                         {/* Connection Status */}
-                        <Row style={{ marginBottom: '20px' }}>
-                            <Col span={24}>
-                                <div style={{
-                                    padding: '10px',
-                                    backgroundColor: socketReady ? '#e8f5e8' : '#ffebee',
-                                    border: `2px solid ${socketReady ? '#4CAF50' : '#f44336'}`,
-                                    borderRadius: '8px',
-                                    textAlign: 'center'
-                                }}>
-                                    <strong>
-                                        Connection Status: {socketReady ? '🟢 Connected' : '🔴 Disconnected'}
-                                    </strong>
-                                </div>
-                            </Col>
-                        </Row>
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="Connection"
+                                    value={socketReady ? "Connected" : "Disconnected"}
+                                    prefix={<WifiOutlined style={{ color: socketReady ? '#52c41a' : '#ff4d4f' }} />}
+                                    valueStyle={{ 
+                                        color: socketReady ? '#52c41a' : '#ff4d4f',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </Card>
+                        </Col>
+
+                        {/* Navigation Status */}
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="Navigation"
+                                    value={autonomousMode ? "Active" : "Idle"}
+                                    prefix={<CompassOutlined style={{ color: autonomousMode ? '#1890ff' : '#d9d9d9' }} />}
+                                    valueStyle={{ 
+                                        color: autonomousMode ? '#1890ff' : '#8c8c8c',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </Card>
+                        </Col>
 
                         {/* GPS Status */}
-                        <Row style={{ marginBottom: '30px' }}>
-                            <Col span={24}>
-                                <div style={{
-                                    padding: '15px',
-                                    backgroundColor: '#e3f2fd',
-                                    border: '2px solid #2196F3',
-                                    borderRadius: '8px',
-                                }}>
-                                    <h3 style={{ marginTop: 0, color: '#1976d2' }}>📍 GPS Status</h3>
-                                    <Row gutter={[16, 8]}>
-                                        <Col xs={12} sm={6}>
-                                            <div><strong>Latitude:</strong> {gpsData.latitude?.toFixed(6)}</div>
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="GPS Satellites"
+                                    value={gpsData.satellites}
+                                    prefix={<EnvironmentOutlined style={{ color: gpsData.satellites > 3 ? '#52c41a' : '#faad14' }} />}
+                                    suffix="sats"
+                                    valueStyle={{ 
+                                        color: gpsData.satellites > 3 ? '#52c41a' : '#faad14',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </Card>
+                        </Col>
+
+                        {/* Speed */}
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="Speed"
+                                    value={gpsData.speed?.toFixed(1)}
+                                    prefix={<DashboardOutlined />}
+                                    suffix="km/h"
+                                    valueStyle={{ fontSize: '16px' }}
+                                />
+                            </Card>
+                        </Col>
+                    </Row>
+
+                    <Row gutter={[24, 24]}>
+                        {/* Navigation Control Panel */}
+                        <Col xs={24} lg={14}>
+                            <Card 
+                                title={
+                                    <Space>
+                                        <AimOutlined />
+                                        <span>Navigation Control</span>
+                                        {autonomousMode && <Text type="success">(ACTIVE)</Text>}
+                                    </Space>
+                                }
+                                extra={
+                                    autonomousMode && (
+                                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                                            <div style={{ 
+                                                width: '8px', 
+                                                height: '8px', 
+                                                backgroundColor: '#52c41a', 
+                                                borderRadius: '50%', 
+                                                marginRight: '8px',
+                                                animation: 'pulse 1.5s infinite'
+                                            }} />
+                                            <Text type="success">Navigating</Text>
+                                        </div>
+                                    )
+                                }
+                            >
+                                {/* Target Coordinates Input */}
+                                <div style={{ marginBottom: '24px' }}>
+                                    <Text strong style={{ fontSize: '16px', marginBottom: '12px', display: 'block' }}>
+                                        🎯 Target Destination
+                                    </Text>
+                                    <Row gutter={[12, 12]}>
+                                        <Col xs={24} md={12}>
+                                            <Text type="secondary">Latitude</Text>
+                                            <Input
+                                                size="large"
+                                                type="number"
+                                                step="0.000001"
+                                                value={targetCoords.lat}
+                                                onChange={(e) => setTargetCoords(prev => ({ ...prev, lat: e.target.value }))}
+                                                placeholder="Enter latitude (e.g., 6.9271)"
+                                                disabled={autonomousMode}
+                                                style={{ marginTop: '4px' }}
+                                            />
                                         </Col>
-                                        <Col xs={12} sm={6}>
-                                            <div><strong>Longitude:</strong> {gpsData.longitude?.toFixed(6)}</div>
-                                        </Col>
-                                        <Col xs={12} sm={6}>
-                                            <div><strong>Speed:</strong> {gpsData.speed?.toFixed(1)} km/h</div>
-                                        </Col>
-                                        <Col xs={12} sm={6}>
-                                            <div><strong>Satellites:</strong> {gpsData.satellites}</div>
+                                        <Col xs={24} md={12}>
+                                            <Text type="secondary">Longitude</Text>
+                                            <Input
+                                                size="large"
+                                                type="number"
+                                                step="0.000001"
+                                                value={targetCoords.lng}
+                                                onChange={(e) => setTargetCoords(prev => ({ ...prev, lng: e.target.value }))}
+                                                placeholder="Enter longitude (e.g., 79.9612)"
+                                                disabled={autonomousMode}
+                                                style={{ marginTop: '4px' }}
+                                            />
                                         </Col>
                                     </Row>
                                 </div>
-                            </Col>
-                        </Row>
 
-                        {/* Autonomous Navigation Control */}
-                        <Row style={{ marginBottom: '30px' }}>
-                            <Col span={24}>
-                                <div style={{
-                                    padding: '15px',
-                                    backgroundColor: autonomousMode ? '#e8f5e8' : '#f0f2f5',
-                                    border: `2px solid ${autonomousMode ? '#4CAF50' : '#ccc'}`,
-                                    borderRadius: '8px',
-                                }}>
-                                    <h3 style={{ marginTop: 0, color: autonomousMode ? '#2e7d32' : '#333' }}>
-                                        🎯 Autonomous Navigation {autonomousMode && '(ACTIVE)'}
-                                    </h3>
-                                    
-                                    <Row gutter={[16, 16]}>
-                                        <Col xs={24} md={12}>
-                                            <div style={{ marginBottom: '10px' }}>
-                                                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                                                    Target Latitude:
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    step="0.000001"
-                                                    value={targetCoords.lat}
-                                                    onChange={(e) => setTargetCoords(prev => ({ ...prev, lat: e.target.value }))}
-                                                    placeholder="Enter latitude"
-                                                    disabled={autonomousMode}
-                                                    style={{
-                                                        width: '100%',
-                                                        padding: '8px',
-                                                        borderRadius: '4px',
-                                                        border: '1px solid #ccc'
-                                                    }}
-                                                />
-                                            </div>
-                                        </Col>
-                                        <Col xs={24} md={12}>
-                                            <div style={{ marginBottom: '10px' }}>
-                                                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                                                    Target Longitude:
-                                                </label>
-                                                <input
-                                                    type="number"
-                                                    step="0.000001"
-                                                    value={targetCoords.lng}
-                                                    onChange={(e) => setTargetCoords(prev => ({ ...prev, lng: e.target.value }))}
-                                                    placeholder="Enter longitude"
-                                                    disabled={autonomousMode}
-                                                    style={{
-                                                        width: '100%',
-                                                        padding: '8px',
-                                                        borderRadius: '4px',
-                                                        border: '1px solid #ccc'
-                                                    }}
-                                                />
-                                            </div>
-                                        </Col>
-                                    </Row>
-                                    
-                                    <Row gutter={[16, 16]} style={{ marginTop: '15px' }}>
-                                        <Col xs={24} sm={12} md={8}>
-                                            <Button
-                                                style={{
-                                                    ...buttonStyle,
-                                                    backgroundColor: autonomousMode ? '#ff9800' : '#4CAF50',
-                                                    width: '100%'
+                                {/* Action Buttons */}
+                                <Row gutter={[12, 12]}>
+                                    <Col xs={24} sm={8}>
+                                        <Button
+                                            type={autonomousMode ? "default" : "primary"}
+                                            danger={autonomousMode}
+                                            size="large"
+                                            icon={autonomousMode ? <StopOutlined /> : <PlayCircleOutlined />}
+                                            onClick={() => {
+                                                if (autonomousMode) {
+                                                    sendCommand('STOP_AUTO');
+                                                } else if (targetCoords.lat && targetCoords.lng) {
+                                                    sendCommand(`SET_TARGET:${targetCoords.lat},${targetCoords.lng}`);
+                                                } else {
+                                                    message.warning('Please enter target coordinates');
+                                                }
+                                            }}
+                                            disabled={!autonomousMode && (!targetCoords.lat || !targetCoords.lng)}
+                                            loading={isNavigating && !autonomousMode}
+                                            style={{ width: '100%', height: '50px' }}
+                                        >
+                                            {autonomousMode ? 'Stop Navigation' : 'Start Navigation'}
+                                        </Button>
+                                    </Col>
+                                    <Col xs={24} sm={8}>
+                                        <Button
+                                            size="large"
+                                            icon={<EnvironmentOutlined />}
+                                            onClick={() => {
+                                                setTargetCoords({
+                                                    lat: gpsData.latitude.toFixed(6),
+                                                    lng: gpsData.longitude.toFixed(6)
+                                                });
+                                                message.success('Current location set as target');
+                                            }}
+                                            disabled={autonomousMode}
+                                            style={{ width: '100%', height: '50px' }}
+                                        >
+                                            Use Current Location
+                                        </Button>
+                                    </Col>
+                                    <Col xs={24} sm={8}>
+                                        <Button
+                                            size="large"
+                                            icon={<AimOutlined />}
+                                            onClick={() => sendCommand('GET_TARGET')}
+                                            style={{ width: '100%', height: '50px' }}
+                                        >
+                                            Get Target Info
+                                        </Button>
+                                    </Col>
+                                </Row>
+
+                                {/* Navigation Progress */}
+                                {autonomousMode && navigationData.distance > 0 && (
+                                    <div style={{ marginTop: '24px' }}>
+                                        <Divider>Navigation Progress</Divider>
+                                        <Row gutter={[16, 16]}>
+                                            <Col xs={24} sm={12}>
+                                                <Card size="small" style={{ backgroundColor: '#f6ffed' }}>
+                                                    <Statistic
+                                                        title="Distance to Target"
+                                                        value={navigationData.distance}
+                                                        precision={1}
+                                                        suffix="m"
+                                                        valueStyle={{ color: '#52c41a', fontSize: '24px' }}
+                                                    />
+                                                </Card>
+                                            </Col>
+                                            <Col xs={24} sm={12}>
+                                                <Card size="small" style={{ backgroundColor: '#fff7e6' }}>
+                                                    <Statistic
+                                                        title="Heading Error"
+                                                        value={Math.abs(navigationData.headingError)}
+                                                        precision={1}
+                                                        suffix="°"
+                                                        valueStyle={{ 
+                                                            color: Math.abs(navigationData.headingError) < 5 ? '#52c41a' : '#faad14',
+                                                            fontSize: '24px'
+                                                        }}
+                                                    />
+                                                </Card>
+                                            </Col>
+                                        </Row>
+                                        
+                                        <div style={{ marginTop: '16px' }}>
+                                            <Text type="secondary">Navigation Accuracy</Text>
+                                            <Progress
+                                                percent={Math.max(0, 100 - Math.abs(navigationData.headingError) * 2)}
+                                                status={Math.abs(navigationData.headingError) < 5 ? 'success' : 'active'}
+                                                strokeColor={{
+                                                    '0%': '#108ee9',
+                                                    '100%': '#87d068',
                                                 }}
-                                                onClick={() => {
-                                                    if (autonomousMode) {
-                                                        sendCommand('STOP_AUTO');
-                                                    } else if (targetCoords.lat && targetCoords.lng) {
-                                                        sendCommand(`SET_TARGET:${targetCoords.lat},${targetCoords.lng}`);
-                                                    } else {
-                                                        message.warning('Please enter target coordinates');
-                                                    }
-                                                }}
-                                                disabled={!autonomousMode && (!targetCoords.lat || !targetCoords.lng)}
-                                            >
-                                                {autonomousMode ? '🛑 Stop Auto' : '🚀 Start Auto'}
-                                            </Button>
-                                        </Col>
-                                        <Col xs={24} sm={12} md={8}>
-                                            <Button
-                                                style={{
-                                                    ...buttonStyle,
-                                                    backgroundColor: '#2196F3',
-                                                    width: '100%'
-                                                }}
-                                                onClick={() => {
-                                                    setTargetCoords({
-                                                        lat: gpsData.latitude.toFixed(6),
-                                                        lng: gpsData.longitude.toFixed(6)
-                                                    });
-                                                }}
-                                            >
-                                                📍 Use Current Location
-                                            </Button>
-                                        </Col>
-                                        <Col xs={24} sm={12} md={8}>
-                                            <Button
-                                                style={{
-                                                    ...buttonStyle,
-                                                    backgroundColor: '#9C27B0',
-                                                    width: '100%'
-                                                }}
-                                                onClick={() => sendCommand('GET_TARGET')}
-                                            >
-                                                🎯 Get Target Info
-                                            </Button>
-                                        </Col>
-                                    </Row>
-                                    
-                                    {autonomousMode && (
-                                        <div style={{
-                                            marginTop: '15px',
-                                            padding: '10px',
-                                            backgroundColor: '#fff',
-                                            borderRadius: '4px',
-                                            border: '1px solid #ddd'
-                                        }}>
-                                            <h4 style={{ margin: '0 0 10px 0', color: '#1976d2' }}>Navigation Status</h4>
-                                            <Row gutter={[16, 8]}>
-                                                <Col xs={12} sm={6}>
-                                                    <div><strong>Distance:</strong> {navigationData.distance?.toFixed(1)}m</div>
+                                                style={{ marginTop: '8px' }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </Card>
+                        </Col>
+
+                        {/* GPS and System Info */}
+                        <Col xs={24} lg={10}>
+                            {/* Current Location */}
+                            <Card 
+                                title={<><EnvironmentOutlined /> Current Location</>}
+                                style={{ marginBottom: '24px' }}
+                            >
+                                <Row gutter={[8, 12]}>
+                                    <Col span={24}>
+                                        <div style={{ padding: '12px', backgroundColor: '#f0f9ff', borderRadius: '6px', border: '1px solid #91d5ff' }}>
+                                            <Row gutter={[8, 8]}>
+                                                <Col span={12}>
+                                                    <Text type="secondary">Latitude</Text><br />
+                                                    <Text strong style={{ fontSize: '16px' }}>{gpsData.latitude?.toFixed(6)}</Text>
                                                 </Col>
-                                                <Col xs={12} sm={6}>
-                                                    <div><strong>Target Bearing:</strong> {navigationData.targetBearing?.toFixed(1)}°</div>
-                                                </Col>
-                                                <Col xs={12} sm={6}>
-                                                    <div><strong>Current Heading:</strong> {navigationData.currentHeading?.toFixed(1)}°</div>
-                                                </Col>
-                                                <Col xs={12} sm={6}>
-                                                    <div><strong>Heading Error:</strong> {navigationData.headingError?.toFixed(1)}°</div>
+                                                <Col span={12}>
+                                                    <Text type="secondary">Longitude</Text><br />
+                                                    <Text strong style={{ fontSize: '16px' }}>{gpsData.longitude?.toFixed(6)}</Text>
                                                 </Col>
                                             </Row>
                                         </div>
-                                    )}
-                                </div>
-                            </Col>
-                        </Row>
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text type="secondary">Altitude</Text><br />
+                                        <Text strong>{gpsData.altitude?.toFixed(1)} m</Text>
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text type="secondary">HDOP</Text><br />
+                                        <Text strong>{gpsData.hdop?.toFixed(2)}</Text>
+                                    </Col>
+                                    {/* <Col span={8}>
+                                        <Text type="secondary">Fix Quality</Text><br />
+                                        <Text strong style={{ 
+                                            color: gpsData.satellites > 6 ? '#52c41a' : 
+                                                   gpsData.satellites > 3 ? '#faad14' : '#ff4d4f' 
+                                        }}>
+                                            {(() => {
+                                                if (gpsData.satellites > 6) return 'Excellent';
+                                                if (gpsData.satellites > 3) return 'Good';
+                                                return 'Poor';
+                                            })()}
+                                        </Text>
+                                    </Col> */}
+                                </Row>
+                            </Card>
 
-                        {/* System Logs */}
-                        <Row>
-                            <Col span={24}>
+                            {/* Navigation Details */}
+                            {autonomousMode && (
                                 <Card 
-                                    title="System Logs" 
-                                    style={{ marginTop: '24px' }}
+                                    title={<><CompassOutlined /> Navigation Details</>}
+                                    style={{ marginBottom: '24px' }}
                                 >
-                                    <div
-                                        ref={scrollViewRef}
-                                        style={{
-                                            height: '200px',
-                                            overflowY: 'auto',
-                                            backgroundColor: '#001529',
-                                            color: '#52c41a',
-                                            padding: '12px',
-                                            borderRadius: '6px',
-                                            fontFamily: 'monospace',
-                                            fontSize: '12px',
-                                            border: '1px solid #d9d9d9',
-                                            textAlign: 'left',
-                                        }}
-                                    >
-                                        {logMessages.map((msg) => (
-                                            <div key={msg.key} style={{ marginBottom: '2px' }}>
-                                                [{new Date().toLocaleTimeString()}] {msg.messageTxt}
-                                            </div>
-                                        ))}
-                                        {logMessages.length === 0 && (
-                                            <Text type="secondary">No logs yet...</Text>
-                                        )}
-                                    </div>
+                                    <Row gutter={[8, 8]}>
+                                        <Col span={12}>
+                                            <Text type="secondary">Target Bearing</Text><br />
+                                            <Text strong>{navigationData.targetBearing?.toFixed(1)}°</Text>
+                                        </Col>
+                                        <Col span={12}>
+                                            <Text type="secondary">Current Heading</Text><br />
+                                            <Text strong>{navigationData.currentHeading?.toFixed(1)}°</Text>
+                                        </Col>
+                                    </Row>
                                 </Card>
-                            </Col>
-                        </Row>
-                    </div>
+                            )}
+                        </Col>
+                    </Row>
+
+                    {/* System Logs */}
+                    <Card 
+                        title="System Logs" 
+                        style={{ marginTop: '24px' }}
+                    >
+                        <div
+                            ref={scrollViewRef}
+                            style={{
+                                height: '200px',
+                                overflowY: 'auto',
+                                backgroundColor: '#001529',
+                                color: '#52c41a',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                fontFamily: 'monospace',
+                                fontSize: '12px',
+                                border: '1px solid #d9d9d9',
+                                textAlign: 'left',
+                            }}
+                        >
+                            {logMessages.map((msg) => (
+                                <div key={msg.key} style={{ marginBottom: '2px' }}>
+                                    [{new Date().toLocaleTimeString()}] {msg.messageTxt}
+                                </div>
+                            ))}
+                            {logMessages.length === 0 && (
+                                <Text type="secondary">No logs yet...</Text>
+                            )}
+                        </div>
+                    </Card>
                 </Col>
             </Row>
         </div>

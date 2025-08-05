@@ -1,6 +1,14 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Row, Col, Button, Card, Space, Typography, Alert } from 'antd';
-import { CameraOutlined, CarOutlined, EnvironmentOutlined, DashboardOutlined, StopOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Row, Col, Button, Card, Space, Typography, Statistic } from 'antd';
+import { 
+    CameraOutlined, 
+    CarOutlined, 
+    EnvironmentOutlined, 
+    DashboardOutlined, 
+    StopOutlined,
+    WifiOutlined,
+    CompassOutlined,
+} from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 
@@ -257,16 +265,67 @@ const CollectTemperature = () => {
                         <Text type="secondary">Use keyboard controls: Arrow keys for movement, WASD for camera, Space/Esc for stop</Text>
                     </Card>
 
-                    {/* Connection Status */}
-                    <Card style={{ marginBottom: '24px' }}>
-                        <Alert
-                            message={socketReady ? "System Connected" : "System Disconnected"}
-                            description={socketReady ? "Ready to collect temperature data" : "Attempting to reconnect..."}
-                            type={socketReady ? "success" : "error"}
-                            showIcon
-                            style={{ marginBottom: 0 }}
-                        />
-                    </Card>
+                    {/* Status Dashboard */}
+                    <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+                        {/* Connection Status */}
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="Connection"
+                                    value={socketReady ? "Connected" : "Disconnected"}
+                                    prefix={<WifiOutlined style={{ color: socketReady ? '#52c41a' : '#ff4d4f' }} />}
+                                    valueStyle={{ 
+                                        color: socketReady ? '#52c41a' : '#ff4d4f',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </Card>
+                        </Col>
+
+                        {/* Navigation Status */}
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="Navigation"
+                                    value={socketReady ? "Active" : "Idle"}
+                                    prefix={<CompassOutlined style={{ color: socketReady ? '#1890ff' : '#d9d9d9' }} />}
+                                    valueStyle={{ 
+                                        color: socketReady ? '#1890ff' : '#8c8c8c',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </Card>
+                        </Col>
+
+                        {/* GPS Status */}
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="GPS Satellites"
+                                    value={gpsData.satellites}
+                                    prefix={<EnvironmentOutlined style={{ color: gpsData.satellites > 3 ? '#52c41a' : '#faad14' }} />}
+                                    suffix="sats"
+                                    valueStyle={{ 
+                                        color: gpsData.satellites > 3 ? '#52c41a' : '#faad14',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                            </Card>
+                        </Col>
+
+                        {/* Speed */}
+                        <Col xs={24} sm={12} lg={6}>
+                            <Card size="small">
+                                <Statistic
+                                    title="Speed"
+                                    value={gpsData.speed?.toFixed(1)}
+                                    prefix={<DashboardOutlined />}
+                                    suffix="km/h"
+                                    valueStyle={{ fontSize: '16px' }}
+                                />
+                            </Card>
+                        </Col>
+                    </Row>
 
                     <Row gutter={[24, 24]}>
                         {/* Camera Control Panel */}
@@ -539,14 +598,30 @@ const CollectTemperature = () => {
                     <Row gutter={[24, 24]} style={{ marginTop: '24px' }}>
                         {/* GPS Data */}
                         <Col xs={24} lg={12}>
-                            <Card title={<><EnvironmentOutlined /> GPS Location</>} size="small">
-                                <Row gutter={[8, 8]}>
-                                    <Col span={12}><Text strong>Latitude:</Text> {gpsData.latitude?.toFixed(6)}</Col>
-                                    <Col span={12}><Text strong>Longitude:</Text> {gpsData.longitude?.toFixed(6)}</Col>
-                                    <Col span={12}><Text strong>Speed:</Text> {gpsData.speed?.toFixed(1)} km/h</Col>
-                                    <Col span={12}><Text strong>Satellites:</Text> {gpsData.satellites}</Col>
-                                    <Col span={12}><Text strong>Altitude:</Text> {gpsData.altitude?.toFixed(1)}m</Col>
-                                    <Col span={12}><Text strong>HDOP:</Text> {gpsData.hdop?.toFixed(2)}</Col>
+                            <Card title={<><EnvironmentOutlined /> Current Location</>}>
+                                <Row gutter={[8, 12]}>
+                                    <Col span={24}>
+                                        <div style={{ padding: '12px', backgroundColor: '#f0f9ff', borderRadius: '6px', border: '1px solid #91d5ff' }}>
+                                            <Row gutter={[8, 8]}>
+                                                <Col span={12}>
+                                                    <Text type="secondary">Latitude</Text><br />
+                                                    <Text strong style={{ fontSize: '16px' }}>{gpsData.latitude?.toFixed(6)}</Text>
+                                                </Col>
+                                                <Col span={12}>
+                                                    <Text type="secondary">Longitude</Text><br />
+                                                    <Text strong style={{ fontSize: '16px' }}>{gpsData.longitude?.toFixed(6)}</Text>
+                                                </Col>
+                                            </Row>
+                                        </div>
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text type="secondary">Altitude</Text><br />
+                                        <Text strong>{gpsData.altitude?.toFixed(1)} m</Text>
+                                    </Col>
+                                    <Col span={8}>
+                                        <Text type="secondary">HDOP</Text><br />
+                                        <Text strong>{gpsData.hdop?.toFixed(2)}</Text>
+                                    </Col>
                                 </Row>
                             </Card>
                         </Col>
@@ -594,6 +669,11 @@ const CollectTemperature = () => {
                     <Card 
                         title="System Logs" 
                         style={{ marginTop: '24px' }}
+                        extra={
+                            <Button size="small" onClick={() => setLogMessages([])}>
+                                Clear Logs
+                            </Button>
+                        }
                     >
                         <div
                             ref={scrollViewRef}

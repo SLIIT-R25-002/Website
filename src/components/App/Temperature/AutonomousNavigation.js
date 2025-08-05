@@ -470,6 +470,11 @@ const AutonomousNavigation = () => {
                     <Card 
                         title="System Logs" 
                         style={{ marginTop: '24px' }}
+                        extra={
+                            <Button size="small" onClick={() => setLogMessages([])}>
+                                Clear Logs
+                            </Button>
+                        }
                     >
                         <div
                             ref={scrollViewRef}

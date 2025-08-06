@@ -7,10 +7,10 @@ import {
     FireOutlined,
     CheckCircleOutlined,
 } from '@ant-design/icons';
-import CollectTemperature from './Tempetature/CollectTemperature';
 import HeatIslandDetector from './HeatIslandDetector';
 import Segment from './Segmentation/Segment';
 import Material from './Segmentation/Material';
+import Temperature from './Temperature';
 
 const { Header, Content, Footer } = Layout;
 
@@ -44,7 +44,7 @@ const HeatScape = () => {
         {
             title: 'Collect Temperatures',
             icon: <FireOutlined />,
-            content: <CollectTemperature />,
+            content: <Temperature />,
         },
         {
             title: 'VLM Analysis',

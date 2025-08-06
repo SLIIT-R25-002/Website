@@ -17,7 +17,7 @@ const { Header, Content, Footer } = Layout;
 const HeatScape = () => {
   const [currentStep, setCurrentStep] = useState(0);
 
-  const [maskResult] = useState(null);
+  const [maskResult, setMaskResult] = useState(null);
 
   const steps = [
     {
@@ -28,7 +28,9 @@ const HeatScape = () => {
     {
       title: "Segmentation",
       icon: <PartitionOutlined />,
-      content: <Segment />,
+      content: (
+        <Segment maskResult={maskResult} setMaskResult={setMaskResult} />
+      ),
     },
     {
       title: "Identify the Materials",

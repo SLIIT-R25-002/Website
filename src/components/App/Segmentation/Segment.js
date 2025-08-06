@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 
-function Segment({ maskResult, setMaskResult }) {
+function Segment({ maskResult, setMaskResult, imageFile, setImageFile }) {
   const [image, setImage] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedClass, setSelectedClass] = useState("");

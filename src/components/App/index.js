@@ -11,6 +11,7 @@ import HeatIslandDetector from "./HeatIslandDetector";
 import Segment from "./Segmentation/Segment";
 import Material from "./Segmentation/Material";
 import Temperature from "./Temperature";
+import Surface from "./Segmentation/Surface";
 
 const { Header, Content, Footer } = Layout;
 
@@ -18,6 +19,7 @@ const HeatScape = () => {
   const [currentStep, setCurrentStep] = useState(0);
 
   const [maskResult, setMaskResult] = useState(null);
+  const [imageFile, setImageFile] = useState(null);
 
   const steps = [
     {
@@ -29,7 +31,12 @@ const HeatScape = () => {
       title: "Segmentation",
       icon: <PartitionOutlined />,
       content: (
-        <Segment maskResult={maskResult} setMaskResult={setMaskResult} />
+        <Segment
+          maskResult={maskResult}
+          setMaskResult={setMaskResult}
+          imageFile={imageFile}
+          setImageFile={setImageFile}
+        />
       ),
     },
     {
@@ -40,7 +47,7 @@ const HeatScape = () => {
     {
       title: "Calculate surface area",
       icon: <FileImageOutlined />,
-      content: "Calculate the surface area of the identified materials.",
+      content: <Surface maskResult={maskResult} imageFile={imageFile}/>,
     },
 
     {

@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 
-function Material() {
+function Material({segmentationResult, maskResult}) {
   const [selectedClass, setSelectedClass] = useState("Building");
   const [maskExtracted, setMaskExtracted] = useState(false);
   const [materialIdentified, setMaterialIdentified] = useState(false);
 
   // Dummy image URLs for demonstration
-  const segmentationImage = "/assets/images/segmentation-demo.jpg";
-  const maskImage = "/assets/images/mask-demo.jpg";
+  const segmentationImage = segmentationResult;
+  const maskImage = maskResult;
 
   const handleClassChange = (e) => {
     setSelectedClass(e.target.value);

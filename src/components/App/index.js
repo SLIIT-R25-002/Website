@@ -9,12 +9,14 @@ import {
 } from '@ant-design/icons';
 import HeatIslandDetector from './HeatIslandDetector';
 import Segment from './Segmentation/Segment';
+import Material from './Segmentation/Material';
 import Temperature from './Temperature';
 
 const { Header, Content, Footer } = Layout;
 
 const HeatScape = () => {
     const [currentStep, setCurrentStep] = useState(0);
+
 
     const steps = [
         {
@@ -30,7 +32,7 @@ const HeatScape = () => {
         {
             title: 'Identify the Materials',
             icon: <FileImageOutlined />,
-            content: 'Identify the materials in the captured images.',
+            content: <Material />,
         },
         {
             title: 'Calculate surface area',

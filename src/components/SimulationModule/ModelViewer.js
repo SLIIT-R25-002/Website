@@ -15,7 +15,8 @@ function ModelViewer() {
     const transformControlRef = useRef(null);
     const buildingGroupRef = useRef(new THREE.Group());
     const gisGroupRef = useRef(new THREE.Group());
-
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
     // 🌍 User Inputs
     const [lat, setLat] = useState(6.9271);
     const [lon, setLon] = useState(79.8612);
@@ -28,8 +29,33 @@ function ModelViewer() {
     const [windSpeedKmph, setWindSpeedKmph] = useState(0);
     const windVectorsRef = useRef([]);
     const originalMaterialsRef = useRef(new Map());
+    const [simulationSuccess, setSimulationSuccess] = useState(false);
 
     const API_KEY = '229b7c42c71d41f99ae44120252003';
+
+    const inputGroupStyle = { display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 };
+    const fileInputGroupStyle = { display: 'flex', flexDirection: 'column', gap: '4px' };
+    const inputStyle = { padding: '10px', border: '1px solid #ccc', borderRadius: '8px', fontSize: '14px' };
+    const fileInputStyle = { padding: '10px', border: '1px dashed #007bff', borderRadius: '8px', background: '#f8f9ff', fontSize: '14px' };
+    const primaryButton = {
+        padding: '14px 24px', background: 'linear-gradient(90deg, #007bff, #0056b3)', color: 'white', border: 'none', borderRadius: '12px',
+        fontSize: '16px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.3s', boxShadow: '0 4px 12px rgba(0,123,255,0.3)',
+        ':hover': { transform: 'translateY(-2px)', boxShadow: '0 6px 16px rgba(0,123,255,0.4)' }
+    };
+    const secondaryButton = {
+        ...primaryButton, background: 'linear-gradient(90deg, #28a745, #1e7e34)', marginLeft: '10px'
+    };
+    const toggleButton = (active) => ({
+        ...primaryButton,
+        background: active ? 'linear-gradient(90deg, #ffc107, #e0a800)' : 'linear-gradient(90deg, #6c757d, #495057)',
+        marginLeft: '10px'
+    });
+    const progressBarBackground = {
+        height: '20px', backgroundColor: '#e9ecef', borderRadius: '10px', overflow: 'hidden', border: '1px solid #dee2e6'
+    };
+    const progressBarFill = {
+        height: '100%', width: '100%', background: 'linear-gradient(90deg, #4facfe, #00f2fe)', animation: 'progressFill 2s ease-in-out infinite'
+    };
 
     // --- Heatmap Functions ---
     const resetHeatmap = () => {
@@ -46,6 +72,7 @@ function ModelViewer() {
         windVectorsRef.current = [];
     };
 
+    /* eslint-disable no-console */
     const showHeatmap = () => {
         resetHeatmap();
 
@@ -72,7 +99,7 @@ function ModelViewer() {
 
         setIsHeatmapVisible(true);
     };
-
+    /* eslint-enable no-console */
     const hideHeatmap = () => {
         resetHeatmap();
         setIsHeatmapVisible(false);
@@ -129,6 +156,60 @@ function ModelViewer() {
             createWindVectors();
         }
     };
+// --- Send CSV to MATLAB Backend ---
+    const runSimulationInMATLAB = (csvContent) => {
+        setLoading(true);
+        setError(null);
+        setSimulationSuccess(false);
+
+        // ✅ Correctly remove the data URL prefix
+        const csvString = csvContent.startsWith('data:text/csv;charset=utf-8,')
+            ? csvContent.substring('data:text/csv;charset=utf-8,'.length)
+            : csvContent;
+
+        // ✅ Log full header for verification
+        console.log("CSV Header:", csvString.split('\n')[0]); // Should log full header
+        console.log("First data row:", csvString.split('\n')[1]); // Should log first object
+
+        // Create Blob and FormData
+        const blob = new Blob([csvString], { type: 'text/csv' });
+        const formData = new FormData();
+        formData.append('file', blob, 'simulation_input.csv');
+
+        fetch('http://localhost:5000/upload-simulation-input', {
+            method: 'POST',
+            body: formData,
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    setSimulationSuccess(true);
+                    console.log("simulation success")
+                } else {
+                    setError("Simulation failed on server.");
+                }
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error("❌ Fetch error:", err);
+                setError("Could not reach MATLAB backend.");
+                setLoading(false);
+            });
+    };
+
+    // --- Take Snapshot ---
+    const takeSnapshot = () => {
+        if (!renderer) return;
+
+        // Wait for the next animation frame to ensure the scene is fully rendered
+        requestAnimationFrame(() => {
+            const dataURL = renderer.domElement.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = `snapshot_${new Date().toISOString().slice(0, 10)}_${Date.now()}.png`;
+            link.click();
+        });
+    };
 
     // --- Generate CSV ---
     const generateCSV = (localWindSpeedKmph) => {
@@ -157,11 +238,11 @@ function ModelViewer() {
 
         model.traverse((node) => {
             if (node.isMesh && node.userData.Sun_Exposure !== undefined) {
+                // ✅ Skip any object whose name starts with "Plane"
+                if (node.name && node.name.startsWith('Plane')) {
+                    return; // Skip this node
+                }
                 const { userData } = node; // ✅ Fixed: destructuring
-                const positionAttr = node.geometry?.attributes?.position;
-                const area = positionAttr ? (positionAttr.count / 3) * 0.5 : 10; // rough estimate
-                const mass = area * (userData.Thickness || 0.1) * (userData.Density || 2400);
-
                 const windSpeedMps = parseFloat(((localWindSpeedKmph * 1000) / 3600).toFixed(4));
 
                 csvData.push([
@@ -175,8 +256,8 @@ function ModelViewer() {
                     userData.Porosity || '',
                     userData.Solar_Absorptance?.toFixed(6) || '',
                     userData.Solar_Reflectance?.toFixed(6) || '',
-                    area.toFixed(6),
-                    mass.toFixed(2),
+                    userData.Area?.toFixed(6),
+                    userData.Mass?.toFixed(6),
                     userData.Material_type || 'Unknown',
                     windSpeedMps,
                     userData.Sun_Exposure.toFixed(1),
@@ -185,15 +266,15 @@ function ModelViewer() {
                 ]);
             }
         });
-
         const csvContent = `data:text/csv;charset=utf-8,${csvData.map(row => row.join(",")).join("\n")}`;
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `simulation_result_${new Date().toISOString().slice(0, 10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        runSimulationInMATLAB(csvContent);
+        // const encodedUri = encodeURI(csvContent);
+        // const link = document.createElement("a");
+        // link.setAttribute("href", encodedUri);
+        // link.setAttribute("download", `simulation_result_${new Date().toISOString().slice(0, 10)}.csv`);
+        // document.body.appendChild(link);
+        // link.click();
+        // document.body.removeChild(link);
     };
 
     // --- START SIMULATION ---
@@ -210,7 +291,7 @@ function ModelViewer() {
         let windKmph = 10;
         try {
             const res = await fetch(
-                `https://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
+                `http://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
             );
             const data = await res.json();
             const hourData = data.forecast.forecastday[0].hour.find(h =>
@@ -371,7 +452,8 @@ function ModelViewer() {
         setScene(newScene);
 
         const newCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-        newCamera.position.set(0, 10, 15);
+        newCamera.position.set(0, 10, 15); // Adjust based on your scene size
+        newCamera.lookAt(new THREE.Vector3(0, 0, 0)); // Look at center of scene
         setCamera(newCamera);
 
         const newRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -446,96 +528,168 @@ function ModelViewer() {
     }, [lat, lon, dateTime, windSpeedKmph]); // ✅ Fixed: added windSpeedKmph
 
     return (
-        <div>
+        <div style={{ fontFamily: 'Segoe UI, system-ui, sans-serif', background: '#f0f2f5', minHeight: '100vh' }}>
+            {/* 3D Viewer */}
             <div
                 ref={mountRef}
                 style={{
                     width: '100%',
                     height: '600px',
-                    border: '1px solid #ccc',
-                    cursor: 'pointer',
+                    border: '1px solid #ddd',
+                    borderRadius: '12px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
+                    cursor: 'grab',
+                    overflow: 'hidden',
+                    margin: '20px auto',
+                    maxWidth: '1200px'
                 }}
             />
 
-            <div style={{ marginTop: '20px', padding: '10px', background: '#f8f9fa', borderRadius: '8px' }}>
-                <h3>🌍 Simulation Setup</h3>
+            {/* Controls */}
+            <div
+                style={{
+                    maxWidth: '1200px',
+                    margin: '0 auto 40px',
+                    padding: '30px',
+                    background: 'white',
+                    borderRadius: '16px',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+                    border: '1px solid #e0e0e0'
+                }}
+            >
+                <h2 style={{
+                    textAlign: 'center',
+                    color: '#1a1a1a',
+                    marginBottom: '20px',
+                    fontSize: '28px',
+                    fontWeight: '600',
+                    background: 'linear-gradient(90deg, #4facfe 0%, #00f2fe 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text'
+                }}>
+                    🌍 Urban Heat Island Simulation
+                </h2>
 
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Latitude: </label>
-                    <input
-                        type="number"
-                        step="0.0001"
-                        value={lat}
-                        onChange={(e) => setLat(parseFloat(e.target.value))}
-                        style={{ width: '120px' }}
-                    />
+                <div style={{ display: 'grid', gap: '16px', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <div style={inputGroupStyle}>
+                            <label>📍 Latitude:</label>
+                            <input type="number" step="0.0001" value={lat} onChange={(e) => setLat(parseFloat(e.target.value))} style={inputStyle} />
+                        </div>
+                        <div style={inputGroupStyle}>
+                            <label>📍 Longitude:</label>
+                            <input type="number" step="0.0001" value={lon} onChange={(e) => setLon(parseFloat(e.target.value))} style={inputStyle} />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <div style={inputGroupStyle}>
+                            <label>📅 Date & Time:</label>
+                            <input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} style={inputStyle} />
+                        </div>
+                        <div style={inputGroupStyle}>
+                            <label>🌡️ Temperature (°C):</label>
+                            <input type="number" step="0.1" value={temperature} onChange={(e) => setTemperature(parseFloat(e.target.value))} style={inputStyle} />
+                        </div>
+                        <div style={inputGroupStyle}>
+                            <label>💧 Humidity (%):</label>
+                            <input type="number" step="1" value={humidity} onChange={(e) => setHumidity(parseInt(e.target.value, 10))} style={inputStyle} />
+                        </div>
+                    </div>
                 </div>
 
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Longitude: </label>
-                    <input
-                        type="number"
-                        step="0.0001"
-                        value={lon}
-                        onChange={(e) => setLon(parseFloat(e.target.value))}
-                        style={{ width: '120px' }}
-                    />
+                <hr style={{ border: '1px solid #eee', margin: '24px 0' }} />
+
+                <div style={{ display: 'grid', gap: '16px', marginBottom: '24px' }}>
+                    <div style={fileInputGroupStyle}>
+                        <label>🏢 Upload Building Model:</label>
+                        <input type="file" accept=".glb,.gltf,.stl" onChange={handleBuildingUpload} style={fileInputStyle} />
+                    </div>
+                    <div style={fileInputGroupStyle}>
+                        <label>🗺️ Upload GIS Model:</label>
+                        <input type="file" accept=".glb,.gltf,.stl" onChange={handleGISUpload} style={fileInputStyle} />
+                    </div>
                 </div>
 
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Date & Time: </label>
-                    <input
-                        type="datetime-local"
-                        value={dateTime}
-                        onChange={(e) => setDateTime(e.target.value)}
-                    />
-                </div>
+                {/* Simulation Progress */}
+                {loading && !simulationSuccess && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <div style={{ fontSize: '16px', color: '#1a1a1a', marginBottom: '8px', fontWeight: '500' }}>
+                            🔁 Running thermal simulation...
+                        </div>
+                        <div style={progressBarBackground}>
+                            <div style={progressBarFill}></div>
+                        </div>
+                    </div>
+                )}
 
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Temperature (°C): </label>
-                    <input
-                        type="number"
-                        step="0.1"
-                        value={temperature}
-                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                        style={{ width: '80px' }}
-                    />
-                </div>
+                {simulationSuccess && (
+                    <div style={{
+                        marginBottom: '20px',
+                        padding: '16px',
+                        background: '#d4edda',
+                        color: '#155724',
+                        borderRadius: '8px',
+                        textAlign: 'center',
+                        fontWeight: 'bold',
+                        fontSize: '16px',
+                        animation: 'fadeIn 0.5s ease-in'
+                    }}>
+                        ✅ Thermal simulation completed! Check MATLAB results.
+                    </div>
+                )}
 
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Humidity (%): </label>
-                    <input
-                        type="number"
-                        step="1"
-                        value={humidity}
-                        onChange={(e) => setHumidity(parseInt(e.target.value, 10))}
-                        style={{ width: '80px' }}
-                    />
-                </div>
+                {error && (
+                    <div style={{
+                        marginBottom: '20px',
+                        padding: '16px',
+                        background: '#f8d7da',
+                        color: '#721c24',
+                        borderRadius: '8px',
+                        textAlign: 'center'
+                    }}>
+                        ❌ {error}
+                    </div>
+                )}
 
-                <hr style={{ margin: '15px 0' }} />
-
-                <label>🏢 Upload Building Model: </label>
-                <input type="file" accept=".glb,.gltf,.stl" onChange={handleBuildingUpload} />
-                <br />
-
-                <label>🗺️ Upload GIS Model: </label>
-                <input type="file" accept=".glb,.gltf,.stl" onChange={handleGISUpload} />
-                <br />
-
-                <button type="button" onClick={startSimulation} style={{ marginTop: '15px', fontWeight: 'bold' }}>
-                    ▶️ Start Simulation
-                </button>
-
-                <div style={{ marginTop: '10px' }}>
-                    <button type="button" onClick={toggleHeatmap} style={{ marginRight: '10px' }}>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '20px' }}>
+                    <button type="button" onClick={startSimulation} style={primaryButton}>
+                        ▶️ Start Simulation
+                    </button>
+                    <button type="button" onClick={takeSnapshot} style={secondaryButton}>
+                        📸 Take Snapshot
+                    </button>
+                    <button type="button" onClick={toggleHeatmap} style={toggleButton(isHeatmapVisible)}>
                         {isHeatmapVisible ? '👁️ Show Default View' : '🔥 Show Heatmap'}
                     </button>
-                    <button type="button" onClick={toggleWind} style={{ marginRight: '10px' }}>
+                    <button type="button" onClick={toggleWind} style={toggleButton(windVectorsRef.current.length > 0)}>
                         {windVectorsRef.current.length > 0 ? '🌬️ Hide Wind' : '🌬️ Show Wind'}
                     </button>
                 </div>
+
+                <p style={{
+                    textAlign: 'center',
+                    fontSize: '14px',
+                    color: '#666',
+                    marginTop: '20px',
+                    fontStyle: 'italic'
+                }}>
+                    Rotate: Click & Drag | Zoom: Scroll | Move Model: Click after upload
+                </p>
             </div>
+
+            <style>{`
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes pulse {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.05); }
+                    100% { transform: scale(1); }
+                }
+            `}</style>
         </div>
     );
 }

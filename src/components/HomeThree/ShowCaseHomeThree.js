@@ -73,7 +73,7 @@ function ShowCaseHomeThree() {
                         <div className="col-lg-12">
                             <Slider ref={sliderRef} {...settings}>
                                 {images.map((image, index) => (
-                                    <div key={index}>
+                                    <div key={image.src}>
                                         <div className="appie-showcase-item mt-30">
                                             <a 
                                                 className="appie-image-popup"

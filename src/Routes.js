@@ -22,6 +22,7 @@ import Service from './components/Service';
 import Shops from './components/Shops';
 import ShopDetails from './components/Shops/Details';
 import HeatScape from './components/App';
+import ModelViewer from './components/SimulationModule/ModelViewer';
 
 function Routes() {
     const [loading, setLoading] = useState(true);
@@ -64,6 +65,7 @@ function Routes() {
                             <Route path="/shops" element={<Shops />} />
                             <Route path="/shops/shop-details" element={<ShopDetails />} />
                             <Route path="/app" element={<HeatScape />} />
+                            <Route path="/modelviewer" element={<ModelViewer />} />
                             <Route path="*" element={<Error />} />
                         </RouterRoutes>
                     </ScrollToTop>

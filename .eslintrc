@@ -37,21 +37,17 @@
     "linebreak-style": 0,
     "react/prop-types": 0,
     "jsx-a11y/click-events-have-key-events": 0,
+    "prettier/prettier": "off",
+    "react/jsx-no-useless-fragments": "off",
+    "no-param-reassign": "off",
+    "react/function-component-definition": "off",
+    "import/no-unresolved": "off",
+    "react/no-array-index-key": "warn",
+    "react/jsx-no-useless-fragment": "off",
     "react/jsx-filename-extension": [
       1,
       {
         "extensions": [".js", ".jsx"]
-      }
-    ],
-    "prettier/prettier": [
-      "error",
-      {
-        "trailingComma": "es5",
-        "singleQuote": true,
-        "printWidth": 100,
-        "tabWidth": 4,
-        "semi": true,
-        "endOfLine": "auto"
       }
     ]
   },

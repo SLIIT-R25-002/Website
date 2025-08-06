@@ -1,107 +1,44 @@
 import React, { useState } from "react";
 
-function Material() {
-  const [selectedClass, setSelectedClass] = useState("Building");
-  const [maskExtracted, setMaskExtracted] = useState(false);
-  const [materialIdentified, setMaterialIdentified] = useState(false);
+function Material({ maskResult }) {
+  const [materialResult, setMaterialResult] = useState(null);
+  const [materialLoading, setMaterialLoading] = useState(false);
+  const [materialError, setMaterialError] = useState(null);
 
-  // Dummy image URLs for demonstration
-  const segmentationImage = "/assets/images/segmentation-demo.jpg";
-  const maskImage = "/assets/images/mask-demo.jpg";
+  const maskImage = maskResult;
 
-  const handleClassChange = (e) => {
-    setSelectedClass(e.target.value);
-    setMaskExtracted(false);
-    setMaterialIdentified(false);
-  };
-
-  const handleExtractMask = () => {
-    setMaskExtracted(true);
-    setMaterialIdentified(false);
-  };
-
-  const handleIdentifyMaterial = () => {
-    setMaterialIdentified(true);
+  const handleIdentifyMaterial = async () => {
+    setMaterialLoading(true);
+    setMaterialError(null);
+    setMaterialResult(null);
+    try {
+      // Convert mask image URL to blob
+      const response = await fetch(maskImage);
+      const blob = await response.blob();
+      const formData = new FormData();
+      formData.append("file", blob, "mask.png");
+      const res = await fetch("http://localhost:5000/api/classify/material", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to classify material");
+      }
+      const data = await res.json();
+      setMaterialResult(data);
+    } catch (err) {
+      setMaterialError(err.message || "Error classifying material");
+    } finally {
+      setMaterialLoading(false);
+    }
   };
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto", padding: 24 }}>
       <h2>Material Identification</h2>
-      {/* Segmentation image section */}
-      <div
-        style={{
-          marginBottom: 24,
-          background: "#fafbfc",
-          border: "1px solid #eee",
-          borderRadius: 8,
-          padding: 16,
-        }}
-      >
-        <h4 style={{ marginBottom: 12 }}>Segmentation Image</h4>
-        <img
-          src={segmentationImage}
-          alt="Segmentation"
-          style={{
-            width: "100%",
-            maxHeight: 250,
-            objectFit: "contain",
-            borderRadius: 4,
-            background: "#fff",
-          }}
-        />
-      </div>
-
-      {/* Dropdown for extracted classes */}
-      <div
-        style={{
-          marginBottom: 24,
-          background: "#fafbfc",
-          border: "1px solid #eee",
-          borderRadius: 8,
-          padding: 16,
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-        }}
-      >
-        <label htmlFor="class-select" style={{ fontWeight: 500 }}>
-          Select Class:
-        </label>
-        <select
-          id="class-select"
-          value={selectedClass}
-          onChange={handleClassChange}
-          style={{ padding: 6, borderRadius: 4, border: "1px solid #ccc" }}
-        >
-          <option value="Building">Building</option>
-          <option value="Road">Road</option>
-          <option value="Sidewalk">Sidewalk</option>
-        </select>
-      </div>
-
-      {/* Extract mask button */}
-      <div style={{ marginBottom: 24, textAlign: "center" }}>
-        <button
-          type="button"
-          onClick={handleExtractMask}
-          disabled={maskExtracted}
-          style={{
-            padding: "10px 24px",
-            borderRadius: 6,
-            background: maskExtracted ? "#ccc" : "#007bff",
-            color: "#fff",
-            border: "none",
-            fontWeight: 500,
-            cursor: maskExtracted ? "not-allowed" : "pointer",
-            fontSize: 16,
-          }}
-        >
-          Extract the Mask
-        </button>
-      </div>
-
-      {/* Extracted mask image section */}
-      {maskExtracted && (
+      {/* Only show mask image */}
+      {maskImage && (
         <div
           style={{
             marginBottom: 24,
@@ -111,13 +48,13 @@ function Material() {
             padding: 16,
           }}
         >
-          <h4 style={{ marginBottom: 12 }}>Extracted Mask</h4>
+          <h4 style={{ marginBottom: 12 }}>Mask Image</h4>
           <img
             src={maskImage}
-            alt="Extracted Mask"
+            alt="Mask"
             style={{
               width: "100%",
-              maxHeight: 200,
+              maxHeight: 300,
               objectFit: "contain",
               borderRadius: 4,
               background: "#fff",
@@ -127,30 +64,28 @@ function Material() {
       )}
 
       {/* Identify material button */}
-      {maskExtracted && (
-        <div style={{ marginBottom: 24, textAlign: "center" }}>
-          <button
-            type="button"
-            onClick={handleIdentifyMaterial}
-            disabled={materialIdentified}
-            style={{
-              padding: "10px 24px",
-              borderRadius: 6,
-              background: materialIdentified ? "#ccc" : "#28a745",
-              color: "#fff",
-              border: "none",
-              fontWeight: 500,
-              cursor: materialIdentified ? "not-allowed" : "pointer",
-              fontSize: 16,
-            }}
-          >
-            Identify the Material
-          </button>
-        </div>
-      )}
+      <div style={{ marginBottom: 24, textAlign: "center" }}>
+        <button
+          type="button"
+          onClick={handleIdentifyMaterial}
+          disabled={materialLoading || !maskImage}
+          style={{
+            padding: "10px 24px",
+            borderRadius: 6,
+            background: materialLoading ? "#ccc" : "#28a745",
+            color: "#fff",
+            border: "none",
+            fontWeight: 500,
+            cursor: materialLoading || !maskImage ? "not-allowed" : "pointer",
+            fontSize: 16,
+          }}
+        >
+          {materialLoading ? "Identifying..." : "Identify the Material"}
+        </button>
+      </div>
 
-      {/* Show identified material result (dummy) */}
-      {materialIdentified && (
+      {/* Show identified material result */}
+      {materialResult && (
         <div
           style={{
             color: "#28a745",
@@ -160,7 +95,12 @@ function Material() {
             marginTop: 12,
           }}
         >
-          Material: Concrete (example)
+          Material: {materialResult.material}
+        </div>
+      )}
+      {materialError && (
+        <div style={{ color: "red", textAlign: "center", marginTop: 12 }}>
+          {materialError}
         </div>
       )}
     </div>

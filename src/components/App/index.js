@@ -7,13 +7,16 @@ import {
     FireOutlined,
     CheckCircleOutlined,
 } from '@ant-design/icons';
-import CollectTemperature from './CollectTemperature';
 import HeatIslandDetector from './HeatIslandDetector';
+import Segment from './Segmentation/Segment';
+import Material from './Segmentation/Material';
+import Temperature from './Temperature';
 
 const { Header, Content, Footer } = Layout;
 
 const HeatScape = () => {
     const [currentStep, setCurrentStep] = useState(0);
+
 
     const steps = [
         {
@@ -24,12 +27,24 @@ const HeatScape = () => {
         {
             title: 'Segmentation',
             icon: <PartitionOutlined />,
-            content: 'Capture images from the thermal camera.',
+            content: <Segment />,
         },
+        {
+            title: 'Identify the Materials',
+            icon: <FileImageOutlined />,
+            content: <Material />,
+        },
+        {
+            title: 'Calculate surface area',
+            icon: <FileImageOutlined />,
+            content: 'Calculate the surface area of the identified materials.',
+        },
+
+
         {
             title: 'Collect Temperatures',
             icon: <FireOutlined />,
-            content: <CollectTemperature />,
+            content: <Temperature />,
         },
         {
             title: 'VLM Analysis',

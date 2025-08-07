@@ -81,7 +81,7 @@ const HeatIslandDetector = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.post('http://localhost:5000/predict', { data });
+      const response = await axios.post('http://localhost:5002/predict', { data });
       const backendData = response.data;
 
       const transformed = {
@@ -117,7 +117,7 @@ const HeatIslandDetector = () => {
       try {
         setLoadingRecommendation(true);
         setError(null);
-        const res = await axios.post('http://localhost:5000/recommend', {
+        const res = await axios.post('http://localhost:5002/recommend', {
           data,
           image_base64: base64Image
         });
@@ -184,7 +184,7 @@ const HeatIslandDetector = () => {
               <Col md={4}>
                 <Form.Group>
                   <Form.Label>Area (sq. meters)</Form.Label>
-                  <Form.Control type="number" name="area" value={newEntry.area} onChange={handleInputChange} placeholder="5000" />
+                  <Form.Control type="number" name="area" value={newEntry.area} onChange={handleInputChange} placeholder="5002" />
                 </Form.Group>
               </Col>
               <Col md={4} className="d-flex align-items-end">

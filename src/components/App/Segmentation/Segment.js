@@ -12,7 +12,7 @@ function Segment({ maskResult, setMaskResult, imageFile, setImageFile }) {
 
   // Fetch class options from backend
   useEffect(() => {
-    fetch("http://localhost:5000/api/classes")
+    fetch("http://localhost:5001/api/classes")
       .then((res) => res.json())
       .then((data) => {
         if (data && Array.isArray(data.classes)) {
@@ -45,7 +45,7 @@ function Segment({ maskResult, setMaskResult, imageFile, setImageFile }) {
       try {
         const formData = new FormData();
         formData.append("file", file);
-        const response = await fetch("http://localhost:5000/api/segment/all", {
+        const response = await fetch("http://localhost:5001/api/segment/all", {
           method: "POST",
           body: formData,
         });
@@ -81,7 +81,7 @@ function Segment({ maskResult, setMaskResult, imageFile, setImageFile }) {
       const formData = new FormData();
       formData.append("file", imageFile);
       formData.append("class_id", selectedClass);
-      const response = await fetch("http://localhost:5000/api/segment/class", {
+      const response = await fetch("http://localhost:5001/api/segment/class", {
         method: "POST",
         body: formData,
       });

@@ -23,6 +23,7 @@ function ModelViewer() {
     const [dateTime, setDateTime] = useState('2025-08-05T15:00');
     const [temperature, setTemperature] = useState(35);
     const [humidity, setHumidity] = useState(64);
+    const [simulationStatus, setSimulationStatus] = useState(false);
 
     // 🌬️ Wind & Heatmap
     const [isHeatmapVisible, setIsHeatmapVisible] = useState(false);
@@ -50,12 +51,12 @@ function ModelViewer() {
         background: active ? 'linear-gradient(90deg, #ffc107, #e0a800)' : 'linear-gradient(90deg, #6c757d, #495057)',
         marginLeft: '10px'
     });
-    const progressBarBackground = {
-        height: '20px', backgroundColor: '#e9ecef', borderRadius: '10px', overflow: 'hidden', border: '1px solid #dee2e6'
-    };
-    const progressBarFill = {
-        height: '100%', width: '100%', background: 'linear-gradient(90deg, #4facfe, #00f2fe)', animation: 'progressFill 2s ease-in-out infinite'
-    };
+    // const progressBarBackground = {
+    //     height: '20px', backgroundColor: '#e9ecef', borderRadius: '10px', overflow: 'hidden', border: '1px solid #dee2e6'
+    // };
+    // const progressBarFill = {
+    //     height: '100%', width: '100%', background: 'linear-gradient(90deg, #4facfe, #00f2fe)', animation: 'progressFill 2s ease-in-out infinite'
+    // };
 
     // --- Heatmap Functions ---
     const resetHeatmap = () => {
@@ -176,7 +177,7 @@ function ModelViewer() {
         const formData = new FormData();
         formData.append('file', blob, 'simulation_input.csv');
 
-        fetch('http://localhost:5000/upload-simulation-input', {
+        fetch('http://localhost:4200/upload-simulation-input', {
             method: 'POST',
             body: formData,
         })
@@ -184,7 +185,12 @@ function ModelViewer() {
             .then(data => {
                 if (data.success) {
                     setSimulationSuccess(true);
-                    console.log("simulation success")
+                    console.log("simulation success");
+                    if(data.prediction.is_heat_island){
+                        setSimulationStatus(true);
+                    }else{
+                        setSimulationStatus(false);
+                    }
                 } else {
                     setError("Simulation failed on server.");
                 }
@@ -253,7 +259,7 @@ function ModelViewer() {
                     userData.Specific_Heat_Capacity || '',
                     userData.Emissivity?.toFixed(6) || '',
                     userData.Infrared_Reflectivity?.toFixed(6) || '',
-                    userData.Porosity || '',
+                    userData.Porosity || 0,
                     userData.Solar_Absorptance?.toFixed(6) || '',
                     userData.Solar_Reflectance?.toFixed(6) || '',
                     userData.Area?.toFixed(6),
@@ -529,6 +535,90 @@ function ModelViewer() {
 
     return (
         <div style={{ fontFamily: 'Segoe UI, system-ui, sans-serif', background: '#f0f2f5', minHeight: '100vh' }}>
+
+            <div style={{ display: 'none' }}>
+                <style>
+                    {`
+        .heat-scape-loader {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          margin: 0px auto;
+          position: relative;
+          display: block;
+          box-sizing: border-box;
+          animation: heatScapeShadowRolling 3s linear infinite;
+        }
+
+        @keyframes heatScapeShadowRolling {
+          0% {
+            box-shadow: 
+              0px 0 rgba(0, 123, 255, 0), 
+              0px 0 rgba(0, 123, 255, 0), 
+              0px 0 rgba(0, 123, 255, 0), 
+              0px 0 rgba(0, 123, 255, 0);
+          }
+          12% {
+            box-shadow: 
+              100px 0 #007bff, 
+              0px 0 rgba(0, 123, 255, 0), 
+              0px 0 rgba(0, 123, 255, 0), 
+              0px 0 rgba(0, 123, 255, 0);
+          }
+          25% {
+            box-shadow: 
+              110px 0 #007bff, 
+              100px 0 #007bff, 
+              0px 0 rgba(0, 123, 255, 0), 
+              0px 0 rgba(0, 123, 255, 0);
+          }
+          36% {
+            box-shadow: 
+              120px 0 #007bff, 
+              110px 0 #007bff, 
+              100px 0 #007bff, 
+              0px 0 rgba(0, 123, 255, 0);
+          }
+          50% {
+            box-shadow: 
+              130px 0 #007bff, 
+              120px 0 #007bff, 
+              110px 0 #007bff, 
+              100px 0 #007bff;
+          }
+          62% {
+            box-shadow: 
+              200px 0 rgba(0, 123, 255, 0), 
+              130px 0 #007bff, 
+              120px 0 #007bff, 
+              110px 0 #007bff;
+          }
+          75% {
+            box-shadow: 
+              200px 0 rgba(0, 123, 255, 0), 
+              200px 0 rgba(0, 123, 255, 0), 
+              130px 0 #007bff, 
+              120px 0 #007bff;
+          }
+          87% {
+            box-shadow: 
+              200px 0 rgba(0, 123, 255, 0), 
+              200px 0 rgba(0, 123, 255, 0), 
+              200px 0 rgba(0, 123, 255, 0), 
+              130px 0 #007bff;
+          }
+          100% {
+            box-shadow: 
+              200px 0 rgba(0, 123, 255, 0), 
+              200px 0 rgba(0, 123, 255, 0), 
+              200px 0 rgba(0, 123, 255, 0), 
+              200px 0 rgba(0, 123, 255, 0);
+          }
+        }
+      `}
+                </style>
+            </div>
+
             {/* 3D Viewer */}
             <div
                 ref={mountRef}
@@ -614,17 +704,60 @@ function ModelViewer() {
 
                 {/* Simulation Progress */}
                 {loading && !simulationSuccess && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <div style={{ fontSize: '16px', color: '#1a1a1a', marginBottom: '8px', fontWeight: '500' }}>
-                            🔁 Running thermal simulation...
+                    <div
+                        style={{
+                            marginBottom: '20px',
+                            textAlign: 'center',
+                            padding: '16px',
+                            background: '#f8f9ff',
+                            borderRadius: '12px',
+                            border: '1px solid #d0e7ff',
+                            width: '100%',
+                            boxSizing: 'border-box'
+                        }}
+                    >
+                        <div
+                            style={{
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                width: '100%',
+                                marginTop: '3px',
+                                marginLeft: '-100px'
+                            }}
+                        >
+                            <div className="heat-scape-loader"></div>
                         </div>
-                        <div style={progressBarBackground}>
-                            <div style={progressBarFill}></div>
+                        <div
+                            style={{
+                                fontSize: '16px',
+                                color: '#1a1a1a',
+                                fontWeight: '500',
+                                marginTop:'3px',
+                                marginBottom: '0px'
+                            }}
+                        >
+                            Running thermal simulation in MATLAB
                         </div>
                     </div>
                 )}
 
-                {simulationSuccess && (
+                {simulationStatus && simulationSuccess && (
+                    <div style={{
+                        marginBottom: '20px',
+                        padding: '16px',
+                        background: '#eddbd4',
+                        color: '#2b181a',
+                        borderRadius: '8px',
+                        textAlign: 'center',
+                        fontWeight: 'bold',
+                        fontSize: '16px',
+                        animation: 'fadeIn 0.5s ease-in'
+                    }}>
+                        ✅ Thermal simulation completed! Heat Island Detected.
+                    </div>
+                )}
+
+                {!simulationStatus && simulationSuccess && (
                     <div style={{
                         marginBottom: '20px',
                         padding: '16px',
@@ -636,7 +769,7 @@ function ModelViewer() {
                         fontSize: '16px',
                         animation: 'fadeIn 0.5s ease-in'
                     }}>
-                        ✅ Thermal simulation completed! Check MATLAB results.
+                        ✅ Thermal simulation completed! No Heat Island Detected.
                     </div>
                 )}
 
@@ -678,18 +811,6 @@ function ModelViewer() {
                     Rotate: Click & Drag | Zoom: Scroll | Move Model: Click after upload
                 </p>
             </div>
-
-            <style>{`
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(-10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes pulse {
-                    0% { transform: scale(1); }
-                    50% { transform: scale(1.05); }
-                    100% { transform: scale(1); }
-                }
-            `}</style>
         </div>
     );
 }

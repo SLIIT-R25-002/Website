@@ -12,7 +12,10 @@
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.5.2",
     "antd": "^5.26.6",
+    "axios": "^1.11.0",
+    "bootstrap": "^5.3.7",
     "react": "^18.2.0",
+    "react-bootstrap": "^2.10.10",
     "react-countup": "^6.5.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.26.2",
@@ -21,6 +24,7 @@
     "slick-carousel": "^1.8.1",
     "suncalc": "^1.9.0",
     "three": "^0.178.0",
+    "uuid": "^11.1.0",
     "web-vitals": "^4.2.4",
     "yet-another-react-lightbox": "^3.25.0"
   },

@@ -69,7 +69,7 @@ function ModelViewer() {
             }
         });
 
-        windVectorsRef.current.forEach(line => scene.remove(line));
+        windVectorsRef.current.forEach((line) => scene.remove(line));
         windVectorsRef.current = [];
     };
 
@@ -93,7 +93,7 @@ function ModelViewer() {
                     transparent: true,
                     opacity: 0.7,
                     roughness: 0.5,
-                    metalness: 0.2
+                    metalness: 0.2,
                 });
             }
         });
@@ -129,7 +129,7 @@ function ModelViewer() {
                     gapSize: 0.5,
                     scale: 1 + speedFactor,
                     transparent: true,
-                    opacity: 0.6
+                    opacity: 0.6,
                 });
 
                 const line = new THREE.Line(geometry, material);
@@ -151,7 +151,7 @@ function ModelViewer() {
 
     const toggleWind = () => {
         if (windVectorsRef.current.length > 0) {
-            windVectorsRef.current.forEach(line => scene.remove(line));
+            windVectorsRef.current.forEach((line) => scene.remove(line));
             windVectorsRef.current = [];
         } else if (windSpeedKmph > 0) {
             createWindVectors();
@@ -222,23 +222,23 @@ function ModelViewer() {
         const model = buildingGroupRef.current;
         const csvData = [
             [
-                "Object Name",
-                "Thickness (m)",
-                "Density (kg/m³)",
-                "Thermal_Conductivity (W/m·K)",
-                "Specific_Heat_Capacity (J/kg·K)",
-                "Emissivity",
-                "Infrared_Reflectivity",
-                "Porosity",
-                "Solar_Absorptance",
-                "Solar_Reflectance",
-                "Area",
-                "Mass",
-                "Material_type",
-                "Wind_Speed",
-                "Sun_Exposure",
-                "Temperature",
-                "Humidity"
+                'Object Name',
+                'Thickness (m)',
+                'Density (kg/m³)',
+                'Thermal_Conductivity (W/m·K)',
+                'Specific_Heat_Capacity (J/kg·K)',
+                'Emissivity',
+                'Infrared_Reflectivity',
+                'Porosity',
+                'Solar_Absorptance',
+                'Solar_Reflectance',
+                'Area',
+                'Mass',
+                'Material_type',
+                'Wind_Speed',
+                'Sun_Exposure',
+                'Temperature',
+                'Humidity'
             ]
         ];
 

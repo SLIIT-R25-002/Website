@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Button, message } from 'antd';
+import { Button } from 'antd';
 import { SettingOutlined, RobotOutlined } from '@ant-design/icons';
 import CollectTemperature from './CollectTemperature';
 import AutonomousNavigation from './AutonomousNavigation';
@@ -11,6 +11,9 @@ const Temperature = () => {
     
     // Shared WebSocket state
     const [socketReady, setSocketReady] = useState(false);
+    const [reconnectAttempts, setReconnectAttempts] = useState(0);
+    const [isReconnecting, setIsReconnecting] = useState(false);
+    const maxReconnectAttempts = 5;
     const [temperature, setTemperature] = useState([]);
     const [isCollecting, setIsCollecting] = useState(false);
     const [logMessages, setLogMessages] = useState([]);
@@ -52,134 +55,208 @@ const Temperature = () => {
     const scrollViewRef = useRef(null);
 
     const addLogMessage = useCallback((messageTxt) => {
-        setLogMessages((prevMessages) => [...prevMessages, { messageTxt, key: prevMessages.length }]);
+        setLogMessages((prevMessages) => [...prevMessages, { messageTxt: `[${new Date().toLocaleTimeString()}] ${messageTxt}`, key: prevMessages.length }]);
     }, []);
 
     const sendCommand = useCallback(
         (command) => {
             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(command);
-                addLogMessage(`Sent command: ${command}`);
+                try {
+                    ws.current.send(command);
+                    addLogMessage(`Sent command: ${command}`);
+                } catch (error) {
+                    addLogMessage(`Failed to send command: ${command} - Error: ${error.message}`);
+                }
+            } else {
+                addLogMessage(`Cannot send command: ${command} - WebSocket not ready`);
             }
-            // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, []
+        }, [addLogMessage]
     );
 
     const connectWebSocket = useCallback(() => {
-        addLogMessage('Attempting to connect to WebSocket...');
+        // if (isReconnecting) return; // Prevent multiple reconnection attempts
+        
+        setIsReconnecting(true);
+        addLogMessage(`Attempting to connect to WebSocket... (Attempt ${reconnectAttempts + 1})`);
+        
+        // Clean up existing connection
+        if (ws.current) {
+            ws.current.onopen = null;
+            ws.current.onclose = null;
+            ws.current.onerror = null;
+            ws.current.onmessage = null;
+            if (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING) {
+                ws.current.close();
+            }
+        }
+        
         ws.current = new WebSocket(wsUrl);
 
         ws.current.onopen = () => {
             setSocketReady(true);
-            addLogMessage('WebSocket is open now.');
+            setReconnectAttempts(0);
+            setIsReconnecting(false);
+            addLogMessage('✅ WebSocket connected successfully');
         };
 
         ws.current.onclose = (event) => {
             setSocketReady(false);
-            addLogMessage(`WebSocket is closed now. Code: ${event.code}, Reason: ${event.reason}`);
-            if (!event.wasClean) {
-                addLogMessage('Reconnecting due to unexpected closure...');
-                setTimeout(connectWebSocket, 5000);
+            setIsReconnecting(false);
+            addLogMessage(`❌ WebSocket closed. Code: ${event.code}, Reason: ${event.reason || 'Unknown'}`);
+            
+            if (!event.wasClean && reconnectAttempts < maxReconnectAttempts) {
+                const delay = Math.min(1000 * (2 ** reconnectAttempts), 10000); // Exponential backoff, max 10s
+                addLogMessage(`🔄 Reconnecting in ${delay/1000}s... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+                setReconnectAttempts(prev => prev + 1);
+                setTimeout(() => {
+                    connectWebSocket();
+                }, delay);
+            } else if (reconnectAttempts >= maxReconnectAttempts) {
+                addLogMessage(`❌ Max reconnection attempts reached. Please refresh the page.`);
+                setReconnectAttempts(0);
             }
         };
 
         ws.current.onerror = (e) => {
             setSocketReady(false);
-            addLogMessage(`WebSocket error: ${JSON.stringify(e, null, 2)}`);
+            setIsReconnecting(false);
+            addLogMessage(`❌ WebSocket error occurred. Check connection to ${wsUrl}`);
+            console.error('WebSocket error:', e);
         };
 
         ws.current.onmessage = (messageTxt) => {
-            // GPS Data
-            if (messageTxt.data.includes('GPS_DATA:')) {
-                const parsedData = JSON.parse(messageTxt.data?.split('GPS_DATA:')[1]) || {};
-                setGPSData({
-                    latitude: parsedData.lat || 0,
-                    longitude: parsedData.lng || 0,
-                    speed: parsedData.speed || 0,
-                    altitude: parsedData.alt || 0,
-                    hdop: parsedData.hdop || 0,
-                    satellites: parsedData.satellites || 0,
-                    time: parsedData.time || '',
-                });
-            }
+            try {
+                const { data } = messageTxt;
 
-            // Gyro Data
-            if (messageTxt.data.includes('GYRO_DATA:')) {
-                const parsedData = JSON.parse(messageTxt.data?.split('GYRO_DATA:')[1]) || {};
-                setGyroData({
-                    gyro_x: parsedData.gyro_x || 0,
-                    gyro_y: parsedData.gyro_y || 0,
-                    gyro_z: parsedData.gyro_z || 0,
-                    accel_x: parsedData.accel_x || 0,
-                    accel_y: parsedData.accel_y || 0,
-                    accel_z: parsedData.accel_z || 0,
-                    accel_angle_x: parsedData.accel_angle_x || 0,
-                    accel_angle_y: parsedData.accel_angle_y || 0,
-                    angle_x: parsedData.angle_x || 0,
-                    angle_y: parsedData.angle_y || 0,
-                    angle_z: parsedData.angle_z || 0,
-                    temp: parsedData.temp || 0,
-                });
-            }
-            
-            // Camera IP
-            if (messageTxt.data.includes('CAM_IP:')) {
-                const ip = messageTxt.data.split('CAM_IP:')[1];
-                setCamIP(ip);
-                addLogMessage(`Camera IP received: ${ip}`);
-            }
+                // GPS Data
+                if (data.includes('GPS_DATA:')) {
+                    try {
+                        const parsedData = JSON.parse(data.split('GPS_DATA:')[1]) || {};
+                        setGPSData({
+                            latitude: parsedData.lat || 0,
+                            longitude: parsedData.lng || 0,
+                            speed: parsedData.speed || 0,
+                            altitude: parsedData.alt || 0,
+                            hdop: parsedData.hdop || 0,
+                            satellites: parsedData.satellites || 0,
+                            time: parsedData.time || '',
+                        });
+                    } catch (parseError) {
+                        addLogMessage(`Error parsing GPS data: ${parseError.message}`);
+                    }
+                    return; // Don't log GPS data as it's frequent
+                }
 
-            if (messageTxt.data.includes('TEMP_DATA:')) {
-                setTemperature(JSON.parse(messageTxt.data?.split(':')[1]) || []);
-                setIsCollecting(false);
+                // Gyro Data
+                if (data.includes('GYRO_DATA:')) {
+                    try {
+                        const parsedData = JSON.parse(data.split('GYRO_DATA:')[1]) || {};
+                        setGyroData({
+                            gyro_x: parsedData.gyro_x || 0,
+                            gyro_y: parsedData.gyro_y || 0,
+                            gyro_z: parsedData.gyro_z || 0,
+                            accel_x: parsedData.accel_x || 0,
+                            accel_y: parsedData.accel_y || 0,
+                            accel_z: parsedData.accel_z || 0,
+                            accel_angle_x: parsedData.accel_angle_x || 0,
+                            accel_angle_y: parsedData.accel_angle_y || 0,
+                            angle_x: parsedData.angle_x || 0,
+                            angle_y: parsedData.angle_y || 0,
+                            angle_z: parsedData.angle_z || 0,
+                            temp: parsedData.temp || 0,
+                        });
+                    } catch (parseError) {
+                        addLogMessage(`Error parsing Gyro data: ${parseError.message}`);
+                    }
+                    return; // Don't log Gyro data as it's frequent
+                }
+                
+                // Camera IP
+                if (data.includes('CAM_IP:')) {
+                    const ip = data.split('CAM_IP:')[1];
+                    setCamIP(ip);
+                    addLogMessage(`📷 Camera IP received: ${ip}`);
+                    return;
+                }
+
+                // Temperature Data
+                if (data.includes('TEMP_DATA:')) {
+                    try {
+                        setTemperature(JSON.parse(data.split(':')[1]) || []);
+                        setIsCollecting(false);
+                        addLogMessage(`🌡️ Temperature data received`);
+                    } catch (parseError) {
+                        addLogMessage(`Error parsing temperature data: ${parseError.message}`);
+                        setIsCollecting(false);
+                    }
+                    return;
+                }
+                
+                // Autonomous Navigation Messages
+                if (data.includes('TARGET_REACHED')) {
+                    setAutonomousMode(false);
+                    setIsNavigating(false);
+                    addLogMessage('🎯 Target reached!');
+                    return;
+                }
+                if (data.includes('TARGET_SET:')) {
+                    const coords = data.split('TARGET_SET:')[1].split(',');
+                    setTargetCoords({ lat: coords[0], lng: coords[1] });
+                    setAutonomousMode(true);
+                    setIsNavigating(true);
+                    addLogMessage(`🎯 Target set: ${coords[0]}, ${coords[1]}`);
+                    return;
+                }
+                if (data.includes('AUTO_STOPPED')) {
+                    setAutonomousMode(false);
+                    setIsNavigating(false);
+                    addLogMessage('🛑 Autonomous mode stopped');
+                    return;
+                }
+                if (data.includes('NAV_DATA:')) {
+                    try {
+                        const parsedData = JSON.parse(data.split('NAV_DATA:')[1]) || {};
+                        setNavigationData({
+                            distance: parsedData.distance || 0,
+                            targetBearing: parsedData.targetBearing || 0,
+                            currentHeading: parsedData.currentHeading || 0,
+                            headingError: parsedData.headingError || 0
+                        });
+                    } catch (parseError) {
+                        addLogMessage(`Error parsing navigation data: ${parseError.message}`);
+                    }
+                    return;
+                }
+                
+                // Log other messages
+                addLogMessage(`📥 Received: ${data}`);
+                
+            } catch (error) {
+                addLogMessage(`Error processing message: ${error.message}`);
             }
-            
-            // Autonomous Navigation Messages
-            if (messageTxt.data.includes('TARGET_REACHED')) {
-                setAutonomousMode(false);
-                setIsNavigating(false);
-                addLogMessage('🎯 Target reached!');
-                message.success('Target reached successfully!');
-            }
-            if (messageTxt.data.includes('TARGET_SET:')) {
-                const coords = messageTxt.data.split('TARGET_SET:')[1].split(',');
-                setTargetCoords({ lat: coords[0], lng: coords[1] });
-                setAutonomousMode(true);
-                setIsNavigating(true);
-                addLogMessage(`🎯 Target set: ${coords[0]}, ${coords[1]}`);
-                message.success('Navigation started!');
-            }
-            if (messageTxt.data.includes('AUTO_STOPPED')) {
-                setAutonomousMode(false);
-                setIsNavigating(false);
-                addLogMessage('🛑 Autonomous mode stopped');
-                message.info('Navigation stopped');
-            }
-            if (messageTxt.data.includes('NAV_DATA:')) {
-                const parsedData = JSON.parse(messageTxt.data?.split('NAV_DATA:')[1]) || {};
-                setNavigationData({
-                    distance: parsedData.distance || 0,
-                    targetBearing: parsedData.targetBearing || 0,
-                    currentHeading: parsedData.currentHeading || 0,
-                    headingError: parsedData.headingError || 0
-                });
-            }
-            
-            if(!messageTxt.data.includes('GYRO_DATA:') ) addLogMessage(`Received message: ${messageTxt.data}`);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [addLogMessage, reconnectAttempts, maxReconnectAttempts]);
+
+    // Manual reconnect function
+    const manualReconnect = useCallback(() => {
+        addLogMessage('🔄 Manual reconnection initiated...');
+        setReconnectAttempts(0);
+        setIsReconnecting(false);
+        connectWebSocket();
+    }, [connectWebSocket, addLogMessage]);
 
     useEffect(() => {
         connectWebSocket();
         return () => {
             if (ws.current) {
-                ws.current.close();
+                ws.current.onopen = null;
+                ws.current.onclose = null;
+                ws.current.onerror = null;
+                ws.current.onmessage = null;
+                ws.current.close(1000, 'Component unmounting');
             }
         };
-        
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [connectWebSocket]);
 
     // Scroll to bottom when new messages arrive
     useEffect(() => {
@@ -191,12 +268,16 @@ const Temperature = () => {
     // Shared props for both components
     const sharedProps = {
         socketReady,
+        isReconnecting,
+        reconnectAttempts,
+        maxReconnectAttempts,
         logMessages,
         gpsData,
         sendCommand,
         addLogMessage,
         setLogMessages,
-        scrollViewRef
+        scrollViewRef,
+        manualReconnect
     };
 
     // Additional props for manual mode

@@ -16,6 +16,7 @@ const { Title, Text } = Typography;
 
 const AutonomousNavigation = ({ 
     socketReady, 
+    isReconnecting,
     logMessages, 
     setLogMessages,
     gpsData, 
@@ -26,7 +27,8 @@ const AutonomousNavigation = ({
     navigationData,
     isNavigating,
     setTargetCoords,
-    switchButton
+    switchButton,
+    manualReconnect
 }) => {
     // Add CSS animation for pulse effect
     useEffect(() => {
@@ -79,13 +81,32 @@ const AutonomousNavigation = ({
                                     <Card size="small">
                                         <Statistic
                                             title="Connection"
-                                            value={socketReady ? "Connected" : "Disconnected"}
-                                            prefix={<WifiOutlined style={{ color: socketReady ? '#52c41a' : '#ff4d4f' }} />}
+                                            value={
+                                                isReconnecting ? "Connecting..." : 
+                                                socketReady ? "Connected" : "Disconnected"
+                                            }
+                                            prefix={
+                                                <WifiOutlined style={{ 
+                                                    color: isReconnecting ? '#faad14' : 
+                                                           socketReady ? '#52c41a' : '#ff4d4f' 
+                                                }} />
+                                            }
                                             valueStyle={{ 
-                                                color: socketReady ? '#52c41a' : '#ff4d4f',
-                                                fontSize: '16px'
+                                                color: isReconnecting ? '#faad14' : 
+                                                       socketReady ? '#52c41a' : '#ff4d4f',
+                                                fontSize: '14px'
                                             }}
                                         />
+                                        {(!socketReady && !isReconnecting) && (
+                                            <Button 
+                                                size="small" 
+                                                type="primary" 
+                                                onClick={manualReconnect}
+                                                style={{ marginTop: '8px', width: '100%' }}
+                                            >
+                                                Reconnect
+                                            </Button>
+                                        )}
                                     </Card>
                                 </Col>
 
@@ -396,7 +417,7 @@ const AutonomousNavigation = ({
                         >
                             {logMessages.map((msg) => (
                                 <div key={msg.key} style={{ marginBottom: '2px' }}>
-                                    [{new Date().toLocaleTimeString()}] {msg.messageTxt}
+                                    {msg.messageTxt}
                                 </div>
                             ))}
                             {logMessages.length === 0 && (

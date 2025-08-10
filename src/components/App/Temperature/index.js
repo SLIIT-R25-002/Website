@@ -183,6 +183,7 @@ const Temperature = () => {
                 if (data.includes('TEMP_DATA:')) {
                     try {
                         setTemperature(JSON.parse(data.split(':')[1]) || []);
+                        console.log(JSON.parse(data.split(':')[1]) || []);
                         setIsCollecting(false);
                         addLogMessage(`🌡️ Temperature data received`);
                     } catch (parseError) {
@@ -273,6 +274,8 @@ const Temperature = () => {
         maxReconnectAttempts,
         logMessages,
         gpsData,
+        gyroData, // Add gyroData to shared props
+        camIP, // Add camIP to shared props
         sendCommand,
         addLogMessage,
         setLogMessages,
@@ -283,10 +286,8 @@ const Temperature = () => {
     // Additional props for manual mode
     const manualProps = {
         ...sharedProps,
-        camIP,
         temperature,
         isCollecting,
-        gyroData,
         setCamIP,
         setTemperature,
         setIsCollecting,

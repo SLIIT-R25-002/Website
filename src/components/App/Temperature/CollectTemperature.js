@@ -272,7 +272,7 @@ const CollectTemperature = ({
                                                 fontSize: '14px'
                                             }}
                                         />
-                                        {(!socketReady && !isReconnecting) && (
+                                        {(!socketReady) && (
                                             <Button 
                                                 size="small" 
                                                 type="primary" 
@@ -364,6 +364,18 @@ const CollectTemperature = ({
                                                                         style={{ width: '100%', height: '100%', border: 'none' }}
                                                                         allow="camera"
                                                                     />
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        top: 8,
+                                                                        left: 8,
+                                                                        backgroundColor: 'rgba(0,0,0,0.7)',
+                                                                        color: 'white',
+                                                                        padding: '4px 8px',
+                                                                        borderRadius: '4px',
+                                                                        fontSize: '10px'
+                                                                    }}>
+                                                                        LIVE
+                                                                    </div>
                                                                     <Button
                                                                         size="small"
                                                                         type="primary"

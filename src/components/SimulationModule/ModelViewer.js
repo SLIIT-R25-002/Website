@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
+// import { TransformControls } from 'three-transformcontrols';
+import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import SunCalc from 'suncalc';
 
 function ModelViewer() {
@@ -31,6 +32,19 @@ function ModelViewer() {
     const windVectorsRef = useRef([]);
     const originalMaterialsRef = useRef(new Map());
     const [simulationSuccess, setSimulationSuccess] = useState(false);
+
+    const defaults = {
+        Thickness: 0.2,
+        Density: 2400,
+        Thermal_Conductivity: 1.8,
+        Specific_Heat_Capacity: 900,
+        Emissivity: 0.85,
+        Infrared_Reflectivity: 0.2,
+        Porosity: 12,
+        Solar_Absorptance: 0.8,
+        Solar_Reflectance: 0.2,
+        Material_type: "Concrete"
+    };
 
     const API_KEY = '229b7c42c71d41f99ae44120252003';
 
@@ -354,7 +368,8 @@ function ModelViewer() {
         if (!scene || !camera || !renderer || !object) return;
 
         if (transformControlRef.current) {
-            scene.remove(transformControlRef.current);
+            const helper = transformControlRef.current.getHelper();
+            scene.remove(helper);
             transformControlRef.current.dispose();
         }
 
@@ -366,7 +381,8 @@ function ModelViewer() {
             orbitControlsRef.current.enabled = !event.value;
         });
 
-        scene.add(control);
+        const helper = control.getHelper();
+        scene.add(helper);
         transformControlRef.current = control;
     };
 
@@ -375,32 +391,31 @@ function ModelViewer() {
         if (!file || !scene) return;
         const url = URL.createObjectURL(file);
         const ext = file.name.toLowerCase().split('.').pop();
+        const allowedExtensions = ['glb', 'gltf', 'stl'];
+        if (!allowedExtensions.includes(ext)) {
+            console.log('Unsupported file format. Please upload a .glb, .gltf, or .stl file.');
+            return;
+        }
         group.clear();
 
         if (ext === 'glb' || ext === 'gltf') {
             new GLTFLoader().load(url, (gltf) => {
+                console.log('GLTF Loaded:', gltf);
                 const model = gltf.scene;
+
+                // Check if the model is valid
+                if (!model || !(model instanceof THREE.Object3D)) {
+                    console.error('Invalid model loaded from GLTF/GLB file.');
+                    return;
+                }
+
                 model.traverse((node) => {
                     if (node.isMesh) {
                         node.castShadow = true;
                         node.receiveShadow = true;
-
                         if (!originalMaterialsRef.current.has(node)) {
                             originalMaterialsRef.current.set(node, node.material);
                         }
-
-                        const defaults = {
-                            Thickness: 0.2,
-                            Density: 2400,
-                            Thermal_Conductivity: 1.8,
-                            Specific_Heat_Capacity: 900,
-                            Emissivity: 0.85,
-                            Infrared_Reflectivity: 0.2,
-                            Porosity: 12,
-                            Solar_Absorptance: 0.8,
-                            Solar_Reflectance: 0.2,
-                            Material_type: "Concrete"
-                        };
                         Object.keys(defaults).forEach(key => {
                             if (node.userData[key] === undefined) {
                                 node.userData[key] = defaults[key];
@@ -408,8 +423,16 @@ function ModelViewer() {
                         });
                     }
                 });
+
                 group.add(model);
-                if (selectable) attachTransformControl(model);
+                new GLTFLoader().load(url, (glt) => {
+                    const bmodel = glt.scene;
+                    // ... traverse, set userData, etc.
+                    group.add(bmodel);
+                    if (selectable) attachTransformControl(model);
+                });
+            }, undefined, (err) => {
+                console.error('Error loading GLTF/GLB:', err);
             });
         } else if (ext === 'stl') {
             new STLLoader().load(url, (geom) => {
@@ -417,7 +440,6 @@ function ModelViewer() {
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 mesh.scale.set(0.01, 0.01, 0.01);
-
                 mesh.userData = {
                     Material_type: 'Steel',
                     Thickness: 0.03,
@@ -430,10 +452,11 @@ function ModelViewer() {
                     Solar_Absorptance: 0.55,
                     Solar_Reflectance: 0.45,
                 };
-
                 originalMaterialsRef.current.set(mesh, mesh.material);
                 group.add(mesh);
                 if (selectable) attachTransformControl(mesh);
+            }, undefined, (err) => {
+                console.error('Error loading STL:', err);
             });
         }
     };
@@ -532,6 +555,12 @@ function ModelViewer() {
             newRenderer.dispose();
         };
     }, [lat, lon, dateTime, windSpeedKmph]); // ✅ Fixed: added windSpeedKmph
+
+    // const setTransformMode = (mode) => { // 'translate' | 'rotate' | 'scale'
+    //     if (transformControlRef.current) {
+    //         transformControlRef.current.setMode(mode);
+    //     }
+    // };
 
     return (
         <div style={{ fontFamily: 'Segoe UI, system-ui, sans-serif', background: '#f0f2f5', minHeight: '100vh' }}>

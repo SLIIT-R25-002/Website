@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
+// import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { TransformControls } from 'three/examples/jsm/controls/TransformControls';
+// import { TransformControls } from 'three-transformcontrols';
+import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import SunCalc from 'suncalc';
 
 function ModelViewer() {
@@ -31,6 +32,19 @@ function ModelViewer() {
     const windVectorsRef = useRef([]);
     const originalMaterialsRef = useRef(new Map());
     const [simulationSuccess, setSimulationSuccess] = useState(false);
+
+    // const defaults = {
+    //     Thickness: 0.2,
+    //     Density: 2400,
+    //     Thermal_Conductivity: 1.8,
+    //     Specific_Heat_Capacity: 900,
+    //     Emissivity: 0.85,
+    //     Infrared_Reflectivity: 0.2,
+    //     Porosity: 12,
+    //     Solar_Absorptance: 0.8,
+    //     Solar_Reflectance: 0.2,
+    //     Material_type: "Concrete"
+    // };
 
     const API_KEY = '229b7c42c71d41f99ae44120252003';
 
@@ -205,15 +219,27 @@ function ModelViewer() {
 
     // --- Take Snapshot ---
     const takeSnapshot = () => {
-        if (!renderer) return;
+        if (!renderer || !scene) return;
 
-        // Wait for the next animation frame to ensure the scene is fully rendered
+        // Step 1: Remove the gizmo helper before rendering
+        let helper = null;
+        if (transformControlRef.current) {
+            helper = transformControlRef.current.getHelper();
+            scene.remove(helper);
+        }
+
+        // Step 2: Wait for next frame to render clean scene
         requestAnimationFrame(() => {
             const dataURL = renderer.domElement.toDataURL('image/png');
             const link = document.createElement('a');
             link.href = dataURL;
             link.download = `snapshot_${new Date().toISOString().slice(0, 10)}_${Date.now()}.png`;
             link.click();
+
+            // Step 3: Re-add the helper after snapshot
+            if (helper) {
+                scene.add(helper);
+            }
         });
     };
 
@@ -353,8 +379,10 @@ function ModelViewer() {
     const attachTransformControl = (object) => {
         if (!scene || !camera || !renderer || !object) return;
 
+        // ✅ Remove old helper if exists
         if (transformControlRef.current) {
-            scene.remove(transformControlRef.current);
+            const oldHelper = transformControlRef.current.getHelper();
+            scene.remove(oldHelper);
             transformControlRef.current.dispose();
         }
 
@@ -366,76 +394,50 @@ function ModelViewer() {
             orbitControlsRef.current.enabled = !event.value;
         });
 
-        scene.add(control);
+        const helper = control.getHelper();
+        scene.add(helper);
         transformControlRef.current = control;
     };
 
     // --- Load Model ---
     const loadModel = (file, group, selectable = false) => {
         if (!file || !scene) return;
+
+        // ✅ Clear group before adding new model
+        while (group.children.length > 0) {
+            const child = group.children[0];
+            group.remove(child);
+        }
+
         const url = URL.createObjectURL(file);
         const ext = file.name.toLowerCase().split('.').pop();
-        group.clear();
 
         if (ext === 'glb' || ext === 'gltf') {
             new GLTFLoader().load(url, (gltf) => {
                 const model = gltf.scene;
+
                 model.traverse((node) => {
                     if (node.isMesh) {
                         node.castShadow = true;
                         node.receiveShadow = true;
-
                         if (!originalMaterialsRef.current.has(node)) {
                             originalMaterialsRef.current.set(node, node.material);
                         }
-
-                        const defaults = {
-                            Thickness: 0.2,
-                            Density: 2400,
-                            Thermal_Conductivity: 1.8,
-                            Specific_Heat_Capacity: 900,
-                            Emissivity: 0.85,
-                            Infrared_Reflectivity: 0.2,
-                            Porosity: 12,
-                            Solar_Absorptance: 0.8,
-                            Solar_Reflectance: 0.2,
-                            Material_type: "Concrete"
-                        };
-                        Object.keys(defaults).forEach(key => {
-                            if (node.userData[key] === undefined) {
-                                node.userData[key] = defaults[key];
-                            }
-                        });
                     }
                 });
+
+                // ✅ Add to group (not directly to scene)
                 group.add(model);
-                if (selectable) attachTransformControl(model);
-            });
-        } else if (ext === 'stl') {
-            new STLLoader().load(url, (geom) => {
-                const mesh = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xaaaaaa }));
-                mesh.castShadow = true;
-                mesh.receiveShadow = true;
-                mesh.scale.set(0.01, 0.01, 0.01);
 
-                mesh.userData = {
-                    Material_type: 'Steel',
-                    Thickness: 0.03,
-                    Density: 7800,
-                    Thermal_Conductivity: 50,
-                    Specific_Heat_Capacity: 550,
-                    Emissivity: 0.3,
-                    Infrared_Reflectivity: 0.7,
-                    Porosity: 0,
-                    Solar_Absorptance: 0.55,
-                    Solar_Reflectance: 0.45,
-                };
-
-                originalMaterialsRef.current.set(mesh, mesh.material);
-                group.add(mesh);
-                if (selectable) attachTransformControl(mesh);
+                // ✅ Attach transform control only if selectable
+                if (selectable) {
+                    attachTransformControl(model);
+                }
+            }, undefined, (err) => {
+                console.error('Error loading GLTF:', err);
             });
         }
+        // ... handle STL
     };
 
     const handleBuildingUpload = (e) => {
@@ -532,6 +534,12 @@ function ModelViewer() {
             newRenderer.dispose();
         };
     }, [lat, lon, dateTime, windSpeedKmph]); // ✅ Fixed: added windSpeedKmph
+
+    // const setTransformMode = (mode) => { // 'translate' | 'rotate' | 'scale'
+    //     if (transformControlRef.current) {
+    //         transformControlRef.current.setMode(mode);
+    //     }
+    // };
 
     return (
         <div style={{ fontFamily: 'Segoe UI, system-ui, sans-serif', background: '#f0f2f5', minHeight: '100vh' }}>

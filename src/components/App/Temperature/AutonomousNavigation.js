@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Row, Col, Button, message, Card, Typography, Space, Progress, Statistic, Input, Divider, Upload, Image } from 'antd';
+import { Row, Col, Button, message, Card, Typography, Space, Progress, Statistic, Input, Divider, Upload, Image, Spin } from 'antd';
 import { 
     RobotOutlined, 
     EnvironmentOutlined, 
@@ -31,6 +31,8 @@ const AutonomousNavigation = ({
     navigationData,
     isNavigating,
     setTargetCoords,
+    setAutonomousMode,
+    setIsNavigating,
     switchButton,
     manualReconnect,
     camIP // Add camIP prop for live feed
@@ -45,9 +47,11 @@ const AutonomousNavigation = ({
         try {
             // Replace with your actual backend endpoint
             const response = await fetch('/api/navigation/images');
-            if (response.ok) {
-                const images = await response.json();
-                setBackendImages(images);
+            const data = await response.json();
+            if (data.status !== 'error') {
+                setBackendImages(data);
+            } else {
+                console.error('Backend error:', data.message);
             }
         } catch (error) {
             console.error('Failed to fetch backend images:', error);
@@ -62,6 +66,7 @@ const AutonomousNavigation = ({
                 uid: file.uid,
                 name: file.name,
                 url: e.target.result,
+                file, // Store the actual file object for backend upload
                 coordinates: null, // Will be set when user clicks on image
                 timestamp: new Date().toISOString()
             };
@@ -132,6 +137,119 @@ const AutonomousNavigation = ({
         }
         
         message.success('Coordinates set for image');
+    };
+
+    // Function to send reference image to backend
+    const sendReferenceImage = async (imageObject) => {
+        if (!imageObject) {
+            message.error('No image selected to send as reference');
+            return;
+        }
+
+        try {
+            const formData = new FormData();
+            
+            // Check if we have the actual file object (for uploaded images)
+            if (imageObject.file) {
+                formData.append('image', imageObject.file);
+            } else {
+                // For backend images or images without file object, convert data URL to blob
+                try {
+                    let blob;
+                    if (imageObject.url.startsWith('data:')) {
+                        // Convert data URL to blob
+                        const response = await fetch(imageObject.url);
+                        blob = await response.blob();
+                    } else {
+                        // Fetch from URL
+                        const response = await fetch(imageObject.url);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch image: ${response.statusText}`);
+                        }
+                        blob = await response.blob();
+                    }
+                    formData.append('image', blob, imageObject.name || 'reference_image.jpg');
+                } catch (fetchError) {
+                    console.error('Error processing image:', fetchError);
+                    message.error('Failed to process image for upload');
+                    return;
+                }
+            }
+
+            const response = await fetch('http://localhost:5003/api/set_reference', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const responseData = await response.json();
+            if (responseData.status !== 'error') {
+                message.success('Reference image sent successfully');
+                console.log('Backend response:', responseData);
+            } else {
+                message.error(`Failed to send reference image: ${responseData.message}`);
+            }
+        } catch (error) {
+            console.error('Error sending reference image:', error);
+            message.error(`Error sending reference image: ${error.message}`);
+        }
+    };
+
+    // Function to start video stream
+    const startVideoStream = async () => {
+        if (!camIP) {
+            message.error('Camera IP not available');
+            return;
+        }
+        setAutonomousMode(true);
+
+        try {
+            const response = await fetch('http://localhost:5003/api/start_stream', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    stream_source: `http://${camIP}:81/stream`
+                })
+            });
+
+            const responseData = await response.json();
+            if (responseData.status !== 'error') {
+                message.success('Video stream started successfully');
+                console.log('Stream start response:', responseData);
+                
+                // Set autonomous mode and navigation state
+                setIsNavigating(true);
+                
+            } else {
+                message.error(`Failed to start video stream: ${responseData.message}`);
+            }
+        } catch (error) {
+            console.error('Error starting video stream:', error);
+            message.error(`Error starting video stream: ${error.message}`);
+            setAutonomousMode(false);
+        }
+    };
+
+    // Function to stop video stream
+    const stopVideoStream = async () => {
+        try {
+            const response = await fetch('http://localhost:5003/api/stop_stream', {
+                method: 'POST'
+            });
+
+            const responseData = await response.json();
+            if (responseData.status !== 'error') {
+                message.success('Video stream stopped successfully');
+                console.log('Stream stop response:', responseData);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('Error stopping video stream:', error);
+            message.error(`Error stopping video stream: ${error.message}`);
+            return false;
+        }
     };
 
 
@@ -302,11 +420,10 @@ const AutonomousNavigation = ({
                                         }
                                     >
                                         <Row gutter={[16, 16]}>
-                                            {(isNavigating && autonomousMode) ?
-                                            <Col>
+                                            {(autonomousMode) ?
+                                            <Col span={24}>
                                                 <div style={{
                                                     width: '100%',
-                                                    maxWidth: 300,
                                                     aspectRatio: '4/3',
                                                     border: '3px solid #52c41a',
                                                     borderRadius: 12,
@@ -316,12 +433,16 @@ const AutonomousNavigation = ({
                                                     backgroundColor: '#f0f2f5',
                                                     marginBottom: '16px'
                                                 }}>
-                                                    <iframe
-                                                        src={`http://${camIP}:81/stream`}
-                                                        title="Camera Stream"
-                                                        style={{ width: '100%', height: '100%', border: 'none' }}
-                                                        allow="camera"
-                                                    />
+                                                    {isNavigating ?
+                                                        <iframe
+                                                            src="http://localhost:5003/api/video_stream?show_keypoints=true"
+                                                            title="Camera Stream"
+                                                            style={{ width: '100%', height: '100%', border: 'none' }}
+                                                            allow="camera"
+                                                        />
+                                                        :
+                                                        <Spin size="large" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
+                                                    }
                                                 </div>
                                             </Col>
                                             :
@@ -634,8 +755,36 @@ const AutonomousNavigation = ({
                                                                         LIVE
                                                                     </div>
                                                                 </div>
-                                                                <div>
-                                                                    <Button>Start</Button>
+                                                                <div style={{ marginTop: '12px' }}>
+                                                                    <Button 
+                                                                        type="primary"
+                                                                        size="small"
+                                                                        icon={<PictureOutlined />}
+                                                                        onClick={() => selectedImage && sendReferenceImage(selectedImage)}
+                                                                        disabled={!selectedImage || autonomousMode}
+                                                                        style={{ marginRight: '8px' }}
+                                                                    >
+                                                                        Set Reference
+                                                                    </Button>
+                                                                    <Button 
+                                                                        type={autonomousMode ? "default" : "primary"}
+                                                                        danger={autonomousMode}
+                                                                        size="small"
+                                                                        icon={autonomousMode ? <StopOutlined /> : <PlayCircleOutlined />}
+                                                                        onClick={autonomousMode ? stopVideoStream : startVideoStream}
+                                                                        disabled={!camIP}
+                                                                        style={{ marginRight: '8px' }}
+                                                                    >
+                                                                        {autonomousMode ? 'Stop Stream' : 'Start Stream'}
+                                                                    </Button>
+                                                                    {selectedImage && (
+                                                                        <Text 
+                                                                            type="success" 
+                                                                            style={{ fontSize: '12px' }}
+                                                                        >
+                                                                            ✓ Ready
+                                                                        </Text>
+                                                                    )}
                                                                 </div>
                                                             </>
                                                         ) : (
@@ -739,10 +888,19 @@ const AutonomousNavigation = ({
                                                     danger={autonomousMode}
                                                     size="large"
                                                     icon={autonomousMode ? <StopOutlined /> : <PlayCircleOutlined />}
-                                                    onClick={() => {
+                                                    onClick={async () => {
                                                         if (autonomousMode) {
                                                             sendCommand('STOP_AUTO');
+                                                            // Also stop the video stream
+                                                            await stopVideoStream();
                                                         } else if (targetCoords.lat && targetCoords.lng) {
+                                                            // Send reference image to backend if one is selected
+                                                            if (selectedImage) {
+                                                                const success = await sendReferenceImage(selectedImage);
+                                                                if (!success) {
+                                                                    message.warning('Failed to send reference image, but continuing with navigation');
+                                                                }
+                                                            }
                                                             sendCommand(`SET_TARGET:${targetCoords.lat},${targetCoords.lng}`);
                                                         } else {
                                                             message.warning('Please enter target coordinates');
@@ -752,7 +910,9 @@ const AutonomousNavigation = ({
                                                     loading={isNavigating && !autonomousMode}
                                                     style={{ width: '100%', height: '50px' }}
                                                 >
-                                                    {autonomousMode ? 'Stop Navigation' : 'Start Navigation'}
+                                                    {autonomousMode ? 'Stop Navigation' : (
+                                                        selectedImage ? 'Start Navigation + Set Reference' : 'Start Navigation'
+                                                    )}
                                                 </Button>
                                             </Col>
                                             <Col xs={24} sm={8}>

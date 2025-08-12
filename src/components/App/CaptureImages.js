@@ -128,8 +128,8 @@ const CaptureImages = () => {
 
       {!sessionId ? (
         // No active session - show create session option
-        <Card style={{ textAlign: "center", backgroundColor: "#fafafa" }}>
-          <Space direction="vertical" size="large">
+        <Card style={{ textAlign: "center", backgroundColor: "#fafafa", height: 'calc(100vh-285px)' }}>
+          <Space direction="vertical" size="large" style={{height: '100%', justifyContent: 'center'}}>
             <div>
               <PlusOutlined style={{ fontSize: "48px", color: "#1890ff" }} />
               <Title level={3} style={{ marginTop: "16px" }}>

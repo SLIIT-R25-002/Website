@@ -7,6 +7,7 @@ import {
   FireOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
+import 'bootstrap/dist/css/bootstrap.min.css';
 import HeatIslandDetector from "./HeatIslandDetector";
 import Segment from "./Segmentation/Segment";
 import Material from "./Segmentation/Material";

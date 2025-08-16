@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Row, Col, Button, Card, Space, Typography, Statistic } from 'antd';
 import { 
     CameraOutlined, 
@@ -14,6 +14,7 @@ const { Title, Text } = Typography;
 
 const CollectTemperature = ({ 
     socketReady, 
+    isReconnecting,
     logMessages, 
     gpsData, 
     camIP, 
@@ -27,17 +28,80 @@ const CollectTemperature = ({
     addLogMessage, 
     setLogMessages,
     scrollViewRef,
-    switchButton
+    switchButton,
+    manualReconnect
 }) => {
+    // eslint-disable-next-line no-unused-vars
+    const [camAngle, setCamAngle] = useState({V_TURN_CAM: 90, H_TURN_CAM: 90});
     const keysPressed = useRef(new Set());
+    const commandQueue = useRef([]);
+    const lastCommandTime = useRef(0);
+    const isProcessingCommands = useRef(false);
+    
+    // Rate limiting for commands (minimum 100ms between commands)
+    const COMMAND_RATE_LIMIT = 100;
+
+    const processCommandQueue = useCallback(() => {
+        if (commandQueue.current.length > 0) {
+            // Get the latest command of the same type to avoid spam
+            const latestCommand = commandQueue.current.pop();
+            commandQueue.current = [];
+            
+            sendCommand(latestCommand);
+            lastCommandTime.current = Date.now();
+            
+            // Check if more commands are waiting
+            setTimeout(() => {
+                if (commandQueue.current.length > 0) {
+                    processCommandQueue();
+                } else {
+                    isProcessingCommands.current = false;
+                }
+            }, COMMAND_RATE_LIMIT);
+        } else {
+            isProcessingCommands.current = false;
+        }
+    }, [sendCommand]);
+
+    // Enhanced sendCommand with rate limiting
+    const sendCommandWithRateLimit = useCallback((command) => {
+        const now = Date.now();
+        if (now - lastCommandTime.current < COMMAND_RATE_LIMIT) {
+            // Add to queue if too soon
+            commandQueue.current.push(command);
+            if (!isProcessingCommands.current) {
+                isProcessingCommands.current = true;
+                setTimeout(() => {
+                    processCommandQueue();
+                }, COMMAND_RATE_LIMIT - (now - lastCommandTime.current));
+            }
+            return;
+        }
+        
+        // Send immediately
+        sendCommand(command);
+        lastCommandTime.current = now;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sendCommand]);
 
     const flipCam = useCallback(
         async (ip) => {
             if (ip) {
                 try {
-                    await fetch(`http://${ip}/control?var=vflip&val=0`);
+                    addLogMessage(`Attempting to configure camera at ${ip}`);
+                    const response = await fetch(`http://${ip}/control?var=vflip&val=0`, {
+                        method: 'GET',
+                        timeout: 5000
+                    });
+                    
+                    if (response.ok) {
+                        addLogMessage(`Camera configured successfully`);
+                    } else {
+                        addLogMessage(`Camera configuration failed: ${response.status}`);
+                    }
                 } catch (error) {
-                    addLogMessage(`Error flipping camera: ${error.message}`);
+                    addLogMessage(`Error configuring camera: ${error.message}`);
+                    // Don't reset camIP on network errors, just log them
                 }
             }
         },
@@ -48,54 +112,72 @@ const CollectTemperature = ({
     const handleKeyDown = useCallback((event) => {
         if (keysPressed.current.has(event.key.toLowerCase())) return; // Prevent key repeat
         keysPressed.current.add(event.key.toLowerCase());
-        
+
         switch (event.key.toLowerCase()) {
             // Movement controls (Arrow keys)
             case 'arrowup':
                 event.preventDefault();
-                sendCommand('backward');
+                sendCommandWithRateLimit('backward');
                 break;
             case 'arrowdown':
                 event.preventDefault();
-                sendCommand('forward');
+                sendCommandWithRateLimit('forward');
                 break;
             case 'arrowleft':
                 event.preventDefault();
-                sendCommand('right');
+                sendCommandWithRateLimit('right');
                 break;
             case 'arrowright':
                 event.preventDefault();
-                sendCommand('left');
+                sendCommandWithRateLimit('left');
                 break;
             // Camera controls (WASD)
             case 'w':
                 event.preventDefault();
-                sendCommand('V_TURN_CAM:40');
+                setCamAngle(prev => {
+                    const newVAngle = Math.max(0, prev.V_TURN_CAM - 10); // Limit to minimum 0
+                    sendCommandWithRateLimit(`V_TURN_CAM:${newVAngle}`);
+                    return { ...prev, V_TURN_CAM: newVAngle };
+                });
                 break;
             case 's':
                 event.preventDefault();
-                sendCommand('V_TURN_CAM:100');
+                setCamAngle(prev => {
+                    const newVAngle = Math.min(180, prev.V_TURN_CAM + 10); // Limit to maximum 180
+                    sendCommandWithRateLimit(`V_TURN_CAM:${newVAngle}`);
+                    return { ...prev, V_TURN_CAM: newVAngle };
+                });
                 break;
             case 'a':
                 event.preventDefault();
-                sendCommand('H_TURN_CAM:100');
+                setCamAngle(prev => {
+                    const newHAngle = Math.min(180, prev.H_TURN_CAM + 10); // Limit to maximum 180
+                    sendCommandWithRateLimit(`H_TURN_CAM:${newHAngle}`);
+                    return { ...prev, H_TURN_CAM: newHAngle };
+                });
                 break;
             case 'd':
                 event.preventDefault();
-                sendCommand('H_TURN_CAM:40');
+                setCamAngle(prev => {
+                    const newHAngle = Math.max(0, prev.H_TURN_CAM - 10); // Limit to minimum 0
+                    sendCommandWithRateLimit(`H_TURN_CAM:${newHAngle}`);
+                    return { ...prev, H_TURN_CAM: newHAngle };
+                });
                 break;
             // Emergency stop
             case ' ':
             case 'escape':
                 event.preventDefault();
-                sendCommand('stop');
+                sendCommand('stop'); // Emergency stop should be immediate
                 sendCommand('V_TURN_CAM:90');
                 sendCommand('H_TURN_CAM:90');
+                // Reset camera angle state to center position
+                setCamAngle({ V_TURN_CAM: 90, H_TURN_CAM: 90 });
                 break;
             default:
                 break;
         }
-    }, [sendCommand]);
+    }, [sendCommand, sendCommandWithRateLimit]);
 
     const handleKeyUp = useCallback((event) => {
         keysPressed.current.delete(event.key.toLowerCase());
@@ -107,18 +189,7 @@ const CollectTemperature = ({
             case 'arrowleft':
             case 'arrowright':
                 event.preventDefault();
-                sendCommand('stop');
-                break;
-            // Reset camera position when WASD keys are released
-            case 'w':
-            case 's':
-                event.preventDefault();
-                sendCommand('V_TURN_CAM:90');
-                break;
-            case 'a':
-            case 'd':
-                event.preventDefault();
-                sendCommand('H_TURN_CAM:90');
+                sendCommand('stop'); // Stop should be immediate
                 break;
             default:
                 break;
@@ -139,7 +210,8 @@ const CollectTemperature = ({
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [handleKeyDown, handleKeyUp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Get camera IP on component mount
     useEffect(() => {
@@ -184,13 +256,32 @@ const CollectTemperature = ({
                                     <Card size="small">
                                         <Statistic
                                             title="Connection"
-                                            value={socketReady ? "Connected" : "Disconnected"}
-                                            prefix={<WifiOutlined style={{ color: socketReady ? '#52c41a' : '#ff4d4f' }} />}
+                                            value={
+                                                isReconnecting ? "Connecting..." : 
+                                                socketReady ? "Connected" : "Disconnected"
+                                            }
+                                            prefix={
+                                                <WifiOutlined style={{ 
+                                                    color: isReconnecting ? '#faad14' : 
+                                                           socketReady ? '#52c41a' : '#ff4d4f' 
+                                                }} />
+                                            }
                                             valueStyle={{ 
-                                                color: socketReady ? '#52c41a' : '#ff4d4f',
-                                                fontSize: '16px'
+                                                color: isReconnecting ? '#faad14' : 
+                                                       socketReady ? '#52c41a' : '#ff4d4f',
+                                                fontSize: '14px'
                                             }}
                                         />
+                                        {(!socketReady) && (
+                                            <Button 
+                                                size="small" 
+                                                type="primary" 
+                                                onClick={manualReconnect}
+                                                style={{ marginTop: '8px', width: '100%' }}
+                                            >
+                                                Reconnect
+                                            </Button>
+                                        )}
                                     </Card>
                                 </Col>
 
@@ -273,6 +364,18 @@ const CollectTemperature = ({
                                                                         style={{ width: '100%', height: '100%', border: 'none' }}
                                                                         allow="camera"
                                                                     />
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        top: 8,
+                                                                        left: 8,
+                                                                        backgroundColor: 'rgba(0,0,0,0.7)',
+                                                                        color: 'white',
+                                                                        padding: '4px 8px',
+                                                                        borderRadius: '4px',
+                                                                        fontSize: '10px'
+                                                                    }}>
+                                                                        LIVE
+                                                                    </div>
                                                                     <Button
                                                                         size="small"
                                                                         type="primary"
@@ -298,10 +401,11 @@ const CollectTemperature = ({
                                                                     <Button
                                                                         type="primary"
                                                                         size="small"
-                                                                        onMouseDown={() => sendCommand('V_TURN_CAM:65')}
-                                                                        onMouseUp={() => sendCommand('V_TURN_CAM:90')}
-                                                                        onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
+                                                                        onMouseDown={() => sendCommandWithRateLimit('V_TURN_CAM:65')}
+                                                                        onMouseUp={() => sendCommandWithRateLimit('V_TURN_CAM:90')}
+                                                                        onMouseLeave={() => sendCommandWithRateLimit('V_TURN_CAM:90')}
                                                                         style={{ width: '60px' }}
+                                                                        disabled={!socketReady}
                                                                     >
                                                                         ↑ W
                                                                     </Button>
@@ -309,20 +413,22 @@ const CollectTemperature = ({
                                                                         <Button
                                                                             type="primary"
                                                                             size="small"
-                                                                            onMouseDown={() => sendCommand('H_TURN_CAM:125')}
-                                                                            onMouseUp={() => sendCommand('H_TURN_CAM:90')}
-                                                                            onMouseLeave={() => sendCommand('H_TURN_CAM:90')}
+                                                                            onMouseDown={() => sendCommandWithRateLimit('H_TURN_CAM:125')}
+                                                                            onMouseUp={() => sendCommandWithRateLimit('H_TURN_CAM:90')}
+                                                                            onMouseLeave={() => sendCommandWithRateLimit('H_TURN_CAM:90')}
                                                                             style={{ width: '60px' }}
+                                                                            disabled={!socketReady}
                                                                         >
                                                                             ← A
                                                                         </Button>
                                                                         <Button
                                                                             type="primary"
                                                                             size="small"
-                                                                            onMouseDown={() => sendCommand('H_TURN_CAM:65')}
-                                                                            onMouseUp={() => sendCommand('H_TURN_CAM:90')}
-                                                                            onMouseLeave={() => sendCommand('H_TURN_CAM:90')}
+                                                                            onMouseDown={() => sendCommandWithRateLimit('H_TURN_CAM:65')}
+                                                                            onMouseUp={() => sendCommandWithRateLimit('H_TURN_CAM:90')}
+                                                                            onMouseLeave={() => sendCommandWithRateLimit('H_TURN_CAM:90')}
                                                                             style={{ width: '60px' }}
+                                                                            disabled={!socketReady}
                                                                         >
                                                                             D →
                                                                         </Button>
@@ -330,10 +436,11 @@ const CollectTemperature = ({
                                                                     <Button
                                                                         type="primary"
                                                                         size="small"
-                                                                        onMouseDown={() => sendCommand('V_TURN_CAM:125')}
-                                                                        onMouseUp={() => sendCommand('V_TURN_CAM:90')}
-                                                                        onMouseLeave={() => sendCommand('V_TURN_CAM:90')}
+                                                                        onMouseDown={() => sendCommandWithRateLimit('V_TURN_CAM:125')}
+                                                                        onMouseUp={() => sendCommandWithRateLimit('V_TURN_CAM:90')}
+                                                                        onMouseLeave={() => sendCommandWithRateLimit('V_TURN_CAM:90')}
                                                                         style={{ width: '60px' }}
+                                                                        disabled={!socketReady}
                                                                     >
                                                                         ↓ S
                                                                     </Button>
@@ -380,9 +487,10 @@ const CollectTemperature = ({
                                                             <Button
                                                                 type="primary"
                                                                 size="large"
-                                                                onMouseDown={() => sendCommand('backward')}
+                                                                onMouseDown={() => sendCommandWithRateLimit('backward')}
                                                                 onMouseUp={() => sendCommand('stop')}
                                                                 onMouseLeave={() => sendCommand('stop')}
+                                                                disabled={!socketReady}
                                                                 style={{ 
                                                                     width: '120px', 
                                                                     height: '50px', 
@@ -396,9 +504,10 @@ const CollectTemperature = ({
                                                                 <Button
                                                                     type="primary"
                                                                     size="large"
-                                                                    onMouseDown={() => sendCommand('right')}
+                                                                    onMouseDown={() => sendCommandWithRateLimit('right')}
                                                                     onMouseUp={() => sendCommand('stop')}
                                                                     onMouseLeave={() => sendCommand('stop')}
+                                                                    disabled={!socketReady}
                                                                     style={{ 
                                                                         width: '80px', 
                                                                         height: '50px', 
@@ -411,9 +520,10 @@ const CollectTemperature = ({
                                                                 <Button
                                                                     type="primary"
                                                                     size="large"
-                                                                    onMouseDown={() => sendCommand('left')}
+                                                                    onMouseDown={() => sendCommandWithRateLimit('left')}
                                                                     onMouseUp={() => sendCommand('stop')}
                                                                     onMouseLeave={() => sendCommand('stop')}
+                                                                    disabled={!socketReady}
                                                                     style={{ 
                                                                         width: '80px', 
                                                                         height: '50px', 
@@ -427,9 +537,10 @@ const CollectTemperature = ({
                                                             <Button
                                                                 type="primary"
                                                                 size="large"
-                                                                onMouseDown={() => sendCommand('forward')}
+                                                                onMouseDown={() => sendCommandWithRateLimit('forward')}
                                                                 onMouseUp={() => sendCommand('stop')}
                                                                 onMouseLeave={() => sendCommand('stop')}
+                                                                disabled={!socketReady}
                                                                 style={{ 
                                                                     width: '120px', 
                                                                     height: '50px', 
@@ -555,7 +666,7 @@ const CollectTemperature = ({
                                 >
                                     {logMessages.map((msg) => (
                                         <div key={msg.key} style={{ marginBottom: '2px' }}>
-                                            [{new Date().toLocaleTimeString()}] {msg.messageTxt}
+                                            {msg.messageTxt}
                                         </div>
                                     ))}
                                     {logMessages.length === 0 && (

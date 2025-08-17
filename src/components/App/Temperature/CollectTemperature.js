@@ -210,8 +210,7 @@ const CollectTemperature = ({
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [handleKeyDown, handleKeyUp]);
 
     // Get camera IP on component mount
     useEffect(() => {

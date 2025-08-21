@@ -14,8 +14,28 @@ import {
     CameraOutlined,
     DeleteOutlined,
 } from '@ant-design/icons';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../../firebase';
 
 const { Title, Text } = Typography;
+
+// Utility function to convert Firestore timestamp to JavaScript timestamp
+const getTimestampValue = (timestamp) => {
+  if (!timestamp) return 0;
+  
+  // If it's already a number (JavaScript timestamp), return it
+  if (typeof timestamp === 'number') {
+    return timestamp;
+  }
+  
+  // If it's a Firestore timestamp object
+  if (timestamp && typeof timestamp === 'object' && timestamp.seconds !== undefined) {
+    // Convert Firestore timestamp to JavaScript timestamp (milliseconds)
+    return timestamp.seconds * 1000 + Math.floor(timestamp.nanoseconds / 1000000);
+  }
+  
+  return 0;
+};
 
 const AutonomousNavigation = ({ 
     socketReady, 
@@ -61,19 +81,70 @@ const AutonomousNavigation = ({
 
     const [frameImg, setFrameImg] = useState(null);
 
-    // Function to fetch images from backend
-    const fetchBackendImages = async () => {
+    // Function to fetch segmented images from backend
+    const fetchImages = async () => {
         try {
-            // Replace with your actual backend endpoint
-            const response = await fetch('/api/navigation/images');
-            const data = await response.json();
-            if (data.status !== 'error') {
-                setBackendImages(data);
-            } else {
-                console.error('Backend error:', data.message);
+            // Get the current session ID from localStorage (same as CaptureImages)
+            const sessionId = localStorage.getItem("heatscape_session_id");
+            
+            if (!sessionId) {
+                console.warn('No active session found');
+                setBackendImages([]);
+                return;
             }
+            
+            // Fetch images from the session's images subcollection
+            const imagesCollection = collection(db, "sessions", sessionId, "images");
+            const snapshot = await getDocs(imagesCollection);
+            
+            const segmentedImages = [];
+            
+            snapshot.forEach((doc) => {
+                const imageData = doc.data();
+                const parentGps = imageData.gps;
+                const parentGyro = imageData.gyro;
+                const parentTimestamp = imageData.timestamp;
+                
+                // If the image has segments, extract them
+                if (imageData.segments && Array.isArray(imageData.segments)) {
+                    imageData.segments.forEach((segment, index) => {
+                        segmentedImages.push({
+                            uid: `${doc.id}_segment_${index}`, // Unique ID for each segment
+                            id: `${doc.id}_segment_${index}`,
+                            parentImageId: doc.id,
+                            segmentIndex: index,
+                            
+                            // Segment specific data
+                            imageUrl: segment.segmentImageUrl,
+                            surfaceArea: segment.surfaceArea,
+                            material: segment.material,
+                            temperature: segment.temperature,
+                            humidity: segment.humidity,
+                            
+                            // Inherited from parent image
+                            gps: parentGps,
+                            gyro: parentGyro,
+                            timestamp: parentTimestamp,
+                            
+                            // For compatibility with existing code
+                            coordinates: parentGps || null,
+                            alt: `Segment ${index + 1} - ${segment.material || 'Unknown material'}`,
+                            src: segment.segmentImageUrl,
+                            url: segment.segmentImageUrl
+                        });
+                    });
+                }
+            });
+            
+            // Sort by timestamp (newest first) - handle both Firestore and JS timestamps
+            segmentedImages.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+            
+            setBackendImages(segmentedImages);
+            console.log(`Fetched ${segmentedImages.length} segmented images from session ${sessionId}`, segmentedImages);
+            
         } catch (error) {
             console.error('Failed to fetch backend images:', error);
+            setBackendImages([]);
         }
     };
 
@@ -541,7 +612,7 @@ const AutonomousNavigation = ({
 
     // Fetch backend images on component mount
     useEffect(() => {
-        fetchBackendImages();
+        fetchImages();
     }, []);
 
     // Set initial current processing image when images are available
@@ -861,10 +932,10 @@ const AutonomousNavigation = ({
                                                                         <Image
                                                                             src={item.url}
                                                                             alt={item.name}
-                                                                            style={{ 
-                                                                                width: '100%', 
-                                                                                height: '100%', 
-                                                                                objectFit: 'cover' 
+                                                                            style={{
+                                                                                width: '100%',
+                                                                                height: '100%',
+                                                                                objectFit: 'cover'
                                                                             }}
                                                                             preview={false}
                                                                         />

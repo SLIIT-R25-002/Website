@@ -14,33 +14,98 @@ import {
   Badge,
   List,
   Tag,
-  Tooltip,
+  Modal,
 } from "antd";
 import {
   PlusOutlined,
   MobileOutlined,
   ReloadOutlined,
   CameraOutlined,
-  ClockCircleOutlined,
   EnvironmentOutlined,
+  CompassOutlined,
+  AimOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import {
   collection,
   addDoc,
   serverTimestamp,
   onSnapshot,
+  doc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 
 const { Title, Text, Paragraph } = Typography;
+
+// Utility function to convert Firestore timestamp to JavaScript timestamp
+const getTimestampValue = (timestamp) => {
+  if (!timestamp) return 0;
+  
+  // If it's already a number (JavaScript timestamp), return it
+  if (typeof timestamp === 'number') {
+    return timestamp;
+  }
+  
+  // If it's a Firestore timestamp object
+  if (timestamp && typeof timestamp === 'object' && timestamp.seconds !== undefined) {
+    // Convert Firestore timestamp to JavaScript timestamp (milliseconds)
+    return timestamp.seconds * 1000 + Math.floor(timestamp.nanoseconds / 1000000);
+  }
+  
+  return 0;
+};
 
 const CaptureImages = () => {
   const [sessionId, setSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errorTxt, setErrorTxt] = useState(null);
   const [images, setImages] = useState([]);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [gyroModalVisible, setGyroModalVisible] = useState(false);
+  const [gpsModalVisible, setGpsModalVisible] = useState(false);
 
   const qrCodeValue = sessionId ? `heatscape://join/${sessionId}` : "";
+
+  // Modal handlers
+  const showGyroModal = (image) => {
+    setSelectedImage(image);
+    setGyroModalVisible(true);
+  };
+
+  const showGpsModal = (image) => {
+    setSelectedImage(image);
+    setGpsModalVisible(true);
+  };
+
+  const handleModalClose = () => {
+    setGyroModalVisible(false);
+    setGpsModalVisible(false);
+    setSelectedImage(null);
+  };
+
+  // Delete image function
+  const handleDeleteImage = async (imageId) => {
+    try {
+      await deleteDoc(doc(db, "sessions", sessionId, "images", imageId));
+      message.success("Image deleted successfully!");
+    } catch (error) {
+      console.error("Error deleting image:", error);
+      message.error("Failed to delete image. Please try again.");
+    }
+  };
+
+  // Confirm delete with modal
+  const confirmDelete = (image) => {
+    Modal.confirm({
+      title: 'Delete Image',
+      content: `Are you sure you want to delete this image? This action cannot be undone.`,
+      okText: 'Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: () => handleDeleteImage(image.id),
+    });
+  };
 
   const handleCreateSession = async () => {
     setLoading(true);
@@ -95,9 +160,11 @@ const CaptureImages = () => {
       collection(db, "sessions", sessionId, "images"),
       (snapshot) => {
         const imgs = [];
-        snapshot.forEach((doc) => imgs.push({ id: doc.id, ...doc.data() }));
-        // Sort by timestamp (newest first)
-        imgs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        snapshot.forEach((documment) => imgs.push({ id: documment.id, ...documment.data() }));
+        // Sort by timestamp (newest first) - handle both Firestore and JS timestamps
+        imgs.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+        console.log(imgs);
+        
         setImages(imgs);
       },
       (error) => {
@@ -334,14 +401,6 @@ const CaptureImages = () => {
                       }
                     />
                   }
-                  actions={[
-                    <Tooltip title="View GPS Location">
-                      <EnvironmentOutlined key="location" />
-                    </Tooltip>,
-                    <Tooltip title="View Timestamp">
-                      <ClockCircleOutlined key="time" />
-                    </Tooltip>,
-                  ]}
                 >
                   <Card.Meta
                     title={
@@ -352,7 +411,7 @@ const CaptureImages = () => {
                       >
                         <div>
                           <Text strong style={{ fontSize: "12px" }}>
-                            {new Date(image.timestamp).toLocaleTimeString()}
+                            {new Date(getTimestampValue(image.timestamp)).toLocaleTimeString()}
                           </Text>
                         </div>
                         {image.gps && (
@@ -367,6 +426,39 @@ const CaptureImages = () => {
                             {image.segments.length > 1 ? "s" : ""}
                           </Tag>
                         )}
+                        <Space size="small" style={{ marginTop: "8px" }}>
+                          {image.gyro && (
+                            <Button
+                              size="small"
+                              type="text"
+                              icon={<CompassOutlined />}
+                              onClick={() => showGyroModal(image)}
+                              style={{ fontSize: "10px", padding: "0 4px" }}
+                            >
+                              Gyro
+                            </Button>
+                          )}
+                          {image.gps && (
+                            <Button
+                              size="small"
+                              type="text"
+                              icon={<AimOutlined />}
+                              onClick={() => showGpsModal(image)}
+                              style={{ fontSize: "10px", padding: "0 4px" }}
+                            >
+                              GPS
+                            </Button>
+                          )}
+                          <Button
+                            size="small"
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => confirmDelete(image)}
+                            style={{ fontSize: "10px", padding: "0 4px" }}
+                            title="Delete image"
+                          />
+                        </Space>
                       </Space>
                     }
                   />
@@ -393,6 +485,161 @@ const CaptureImages = () => {
           </Space>
         </Card>
       )}
+      
+      {/* Gyro Data Modal */}
+      <Modal
+        title={
+          <Space>
+            <CompassOutlined />
+            <span>Gyroscope Data</span>
+          </Space>
+        }
+        open={gyroModalVisible}
+        onCancel={handleModalClose}
+        footer={[
+          <Button key="close" onClick={handleModalClose}>
+            Close
+          </Button>
+        ]}
+        width={400}
+      >
+        {selectedImage?.gyro && (
+          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+            <Row gutter={[16, 16]}>
+              <Col span={8}>
+                <Card size="small">
+                  <div style={{ textAlign: "center" }}>
+                    <Text strong style={{ color: "#1890ff" }}>Roll</Text>
+                    <br />
+                    <Text code style={{ fontSize: "12px" }}>
+                      {selectedImage.gyro.roll?.toFixed(6)}°
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small">
+                  <div style={{ textAlign: "center" }}>
+                    <Text strong style={{ color: "#52c41a" }}>Pitch</Text>
+                    <br />
+                    <Text code style={{ fontSize: "12px" }}>
+                      {selectedImage.gyro.pitch?.toFixed(6)}°
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small">
+                  <div style={{ textAlign: "center" }}>
+                    <Text strong style={{ color: "#fa541c" }}>Yaw</Text>
+                    <br />
+                    <Text code style={{ fontSize: "12px" }}>
+                      {selectedImage.gyro.yaw?.toFixed(6)}°
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+            <Divider />
+            <div>
+              <Text strong>Raw Data:</Text>
+              <pre style={{ 
+                backgroundColor: "#f5f5f5", 
+                padding: "8px", 
+                borderRadius: "4px",
+                fontSize: "11px",
+                marginTop: "8px"
+              }}>
+                {JSON.stringify(selectedImage.gyro, null, 2)}
+              </pre>
+            </div>
+          </Space>
+        )}
+      </Modal>
+
+      {/* GPS Data Modal */}
+      <Modal
+        title={
+          <Space>
+            <AimOutlined />
+            <span>GPS Data</span>
+          </Space>
+        }
+        open={gpsModalVisible}
+        onCancel={handleModalClose}
+        footer={[
+          <Button key="close" onClick={handleModalClose}>
+            Close
+          </Button>
+        ]}
+        width={500}
+      >
+        {selectedImage?.gps && (
+          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+            <Row gutter={[16, 16]}>
+              <Col span={12}>
+                <Card size="small">
+                  <div style={{ textAlign: "center" }}>
+                    <Text strong style={{ color: "#1890ff" }}>Latitude</Text>
+                    <br />
+                    <Text code style={{ fontSize: "12px" }}>
+                      {selectedImage.gps.lat?.toFixed(7)}
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card size="small">
+                  <div style={{ textAlign: "center" }}>
+                    <Text strong style={{ color: "#52c41a" }}>Longitude</Text>
+                    <br />
+                    <Text code style={{ fontSize: "12px" }}>
+                      {selectedImage.gps.lng?.toFixed(7)}
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+            <Row gutter={[16, 16]}>
+              <Col span={12}>
+                <Card size="small">
+                  <div style={{ textAlign: "center" }}>
+                    <Text strong style={{ color: "#fa541c" }}>Altitude</Text>
+                    <br />
+                    <Text code style={{ fontSize: "12px" }}>
+                      {selectedImage.gps.altitude?.toFixed(2)}m
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+              <Col span={12}>
+                <Card size="small">
+                  <div style={{ textAlign: "center" }}>
+                    <Text strong style={{ color: "#722ed1" }}>Accuracy</Text>
+                    <br />
+                    <Text code style={{ fontSize: "12px" }}>
+                      ±{selectedImage.gps.accuracy?.toFixed(2)}m
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+            <Divider />
+            <div>
+              <Text strong>Raw Data:</Text>
+              <pre style={{ 
+                backgroundColor: "#f5f5f5", 
+                padding: "8px", 
+                borderRadius: "4px",
+                fontSize: "11px",
+                marginTop: "8px"
+              }}>
+                {JSON.stringify(selectedImage.gps, null, 2)}
+              </pre>
+            </div>
+          </Space>
+        )}
+      </Modal>
     </Space>
   );
 };

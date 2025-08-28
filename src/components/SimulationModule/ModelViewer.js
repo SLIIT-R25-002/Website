@@ -32,6 +32,7 @@ function ModelViewer() {
     const windVectorsRef = useRef([]);
     const originalMaterialsRef = useRef(new Map());
     const [simulationSuccess, setSimulationSuccess] = useState(false);
+    const [aiRecommendation, setAiRecommendation] = useState(null);
 
     // const defaults = {
     //     Thickness: 0.2,
@@ -221,24 +222,63 @@ function ModelViewer() {
     const takeSnapshot = () => {
         if (!renderer || !scene) return;
 
-        // Step 1: Remove the gizmo helper before rendering
+        // Step 1: Temporarily remove transform control helper (gizmo)
         let helper = null;
         if (transformControlRef.current) {
             helper = transformControlRef.current.getHelper();
             scene.remove(helper);
         }
 
-        // Step 2: Wait for next frame to render clean scene
+        // Step 2: Capture snapshot in next frame
         requestAnimationFrame(() => {
-            const dataURL = renderer.domElement.toDataURL('image/png');
-            const link = document.createElement('a');
-            link.href = dataURL;
-            link.download = `snapshot_${new Date().toISOString().slice(0, 10)}_${Date.now()}.png`;
-            link.click();
+            try {
+                // Get data URL (e.g., "data:image/png;base64,...")
+                const dataURL = renderer.domElement.toDataURL('image/png');
 
-            // Step 3: Re-add the helper after snapshot
-            if (helper) {
-                scene.add(helper);
+                // Extract base64 string for backend
+                const base64Image = dataURL.split(',')[1];
+
+                // ✅ 1. SEND TO BACKEND
+                fetch('http://localhost:4200/get_recommendation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image: base64Image,
+                        timestamp: new Date().toISOString()
+                    })
+                })
+                    .then(res => {
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        return res.json();
+                    })
+                    .then(data => {
+                        console.log('✅ Recommendation response:', data);
+
+                        if (data.success && data.recommendation?.gemini_recommendation) {
+                            setAiRecommendation(data.recommendation.gemini_recommendation);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('❌ Failed to send image to backend:', err);
+                    });
+
+                // ✅ 2. DOWNLOAD IMAGE FOR USER
+                const link = document.createElement('a');
+                link.href = dataURL;
+                link.download = `snapshot_${new Date().toISOString().slice(0, 10)}_${Date.now()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } catch (err) {
+                console.error('❌ Snapshot capture failed:', err);
+            } finally {
+                // Re-add helper
+                if (helper) {
+                    scene.add(helper);
+                }
             }
         });
     };
@@ -762,6 +802,9 @@ function ModelViewer() {
                         animation: 'fadeIn 0.5s ease-in'
                     }}>
                         ✅ Thermal simulation completed! Heat Island Detected.
+                        <button type="button" onClick={takeSnapshot} style={secondaryButton}>
+                            📝 Take Recommendations
+                        </button>
                     </div>
                 )}
 
@@ -798,9 +841,6 @@ function ModelViewer() {
                     <button type="button" onClick={startSimulation} style={primaryButton}>
                         ▶️ Start Simulation
                     </button>
-                    <button type="button" onClick={takeSnapshot} style={secondaryButton}>
-                        📸 Take Snapshot
-                    </button>
                     <button type="button" onClick={toggleHeatmap} style={toggleButton(isHeatmapVisible)}>
                         {isHeatmapVisible ? '👁️ Show Default View' : '🔥 Show Heatmap'}
                     </button>
@@ -819,6 +859,62 @@ function ModelViewer() {
                     Rotate: Click & Drag | Zoom: Scroll | Move Model: Click after upload
                 </p>
             </div>
+            {/* AI Recommendation Popup */}
+            {aiRecommendation && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '16px',
+                        width: '90%',
+                        maxWidth: '600px',
+                        maxHeight: '80vh',
+                        overflowY: 'auto',
+                        padding: '24px',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+                        position: 'relative'
+                    }}>
+                        <h3 style={{ margin: '0 0 16px', color: '#1a1a1a' }}>💡 AI Recommendation</h3>
+                        <button
+                            onClick={() => setAiRecommendation(null)}
+                            style={{
+                                position: 'absolute',
+                                top: '12px',
+                                right: '12px',
+                                background: '#f0f0f0',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '30px',
+                                height: '30px',
+                                cursor: 'pointer',
+                                fontSize: '18px',
+                                color: '#555'
+                            }}
+                            type="button"
+                        >
+                            ×
+                        </button>
+                        <p style={{
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: '1.6',
+                            color: '#333',
+                            margin: 0
+                        }}>
+                            {aiRecommendation}
+                        </p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -17,7 +17,7 @@ function Material({ maskResult }) {
       const blob = await response.blob();
       const formData = new FormData();
       formData.append("file", blob, "mask.png");
-      const res = await fetch("http://localhost:5000/api/classify/material", {
+      const res = await fetch("http://localhost:5001/api/classify/material", {
         method: "POST",
         body: formData,
       });

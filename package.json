@@ -6,14 +6,15 @@
   "dependencies": {
     "@ant-design/icons": "^5.5.1",
     "@babel/core": "^7.24.0",
-    "@react-three/drei": "^10.6.1",
-    "@react-three/fiber": "^9.3.0",
+    "@react-three/drei": "^9.89.2",
+    "@react-three/fiber": "^8.15.9",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.5.2",
     "antd": "^5.26.6",
     "axios": "^1.11.0",
     "bootstrap": "^5.3.7",
+    "firebase": "^12.1.0",
     "react": "^18.2.0",
     "react-bootstrap": "^2.10.10",
     "react-countup": "^6.5.0",
@@ -24,6 +25,7 @@
     "slick-carousel": "^1.8.1",
     "suncalc": "^1.9.0",
     "three": "^0.178.0",
+    "three-transformcontrols": "^0.78.1",
     "uuid": "^11.1.0",
     "web-vitals": "^4.2.4",
     "yet-another-react-lightbox": "^3.25.0"
@@ -66,7 +68,7 @@
     "prettier": "^3.3.3"
   },
   "resolutions": {
-    "@babel/core": "^7.24.0"
-  },
-  "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447"
+    "@babel/core": "^7.24.0",
+    "three": "^0.178.0"
+  }
 }

@@ -28,7 +28,7 @@ export default function Surface({ maskResult, imageFile }) {
         formData.append("reference_real", referenceReal);
       }
 
-      const res = await fetch("http://localhost:5000/api/depth/masked", {
+      const res = await fetch("http://localhost:5001/api/depth/masked", {
         method: "POST",
         body: formData,
       });

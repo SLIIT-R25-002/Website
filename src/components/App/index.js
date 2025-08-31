@@ -7,11 +7,16 @@ import {
   FireOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
+import 'bootstrap/dist/css/bootstrap.min.css';
 import HeatIslandDetector from "./HeatIslandDetector";
 import Segment from "./Segmentation/Segment";
 // import Material from "./Segmentation/Material";
 import Temperature from "./Temperature";
+
 // import Surface from "./Segmentation/Surface";
+
+import CaptureImages from "./CaptureImages";
+
 
 const { Header, Content, Footer } = Layout;
 
@@ -25,7 +30,7 @@ const HeatScape = () => {
     {
       title: "Capture Images",
       icon: <FileImageOutlined />,
-      content: "Capture images from the thermal camera.",
+      content: <CaptureImages />,
     },
     {
       title: "Segmentation",
@@ -71,14 +76,14 @@ const HeatScape = () => {
       <Header style={{ color: "white", fontSize: "20px" }}>
         HeatScape Control Panel
       </Header>
-      <Content style={{ padding: "20px 50px" }}>
+      <Content style={{ padding: "20px 50px 10px 50px" }}>
         <Steps current={currentStep} items={steps} />
         <div
           style={{
-            minHeight: "260px",
+            minHeight: "calc(100vh - 243px)",
             textAlign: "center",
             color: "#898989",
-            backgroundColor: "#fafafa",
+            backgroundColor: "#f0f2f5",
             borderRadius: "8px",
             border: `1px dashed #d9d9d9`,
             marginTop: 16,
@@ -102,7 +107,7 @@ const HeatScape = () => {
           )}
         </div>
       </Content>
-      <Footer style={{ textAlign: "center" }}>HeatScape ©2025</Footer>
+      <Footer style={{ textAlign: "center", paddingTop: 0 }}>HeatScape ©2025</Footer>
     </Layout>
   );
 };

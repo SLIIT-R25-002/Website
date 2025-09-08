@@ -1,5 +1,16 @@
-
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
+import { Button, Card, Input, Alert, Progress, Tag, Row, Col } from "antd";
+import {
+  SearchOutlined,
+  PartitionOutlined,
+  ToolOutlined,
+  EyeOutlined,
+  EyeInvisibleOutlined,
+  InfoCircleOutlined,
+  LoadingOutlined,
+  PictureOutlined,
+  SyncOutlined,
+} from "@ant-design/icons";
 
 const Segment = () => {
   const [currentStep, setCurrentStep] = useState("upload"); // 'upload', 'processing', 'results'
@@ -10,9 +21,7 @@ const Segment = () => {
   const [calculatedAreas, setCalculatedAreas] = useState({});
   const [visibleMasks, setVisibleMasks] = useState({});
   const [calculating, setCalculating] = useState({});
-  const fileInputRef = useRef(null);
 
-  // Mock color palette matching the API design
   const COLOR_PALETTE = [
     "#FF6B6B",
     "#4ECDC4",
@@ -26,87 +35,51 @@ const Segment = () => {
     "#85C1E9",
   ];
 
-  const handleFileUpload = (file) => {
-    if (file && file.type.startsWith("image/")) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setUploadedImage({
-          file,
-          url: e.target.result,
-          name: file.name,
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    const { files } = e.dataTransfer;
-    if (files.length > 0) {
-      handleFileUpload(files[0]);
-    }
-  };
-
   const startAnalysis = async () => {
-    if (!uploadedImage) return;
-
     setCurrentStep("processing");
 
-    // Simulate API processing with realistic delays
+    setProcessingStatus("Loading image from Firebase...");
+    await new Promise((resolve) => {
+      setTimeout(resolve, 1000);
+    });
+
+    const mockFirebaseImage = {
+      file: null,
+      url: "https://images.unsplash.com/photo-1448630360428-65456885c650?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2067&q=80",
+      name: "firebase_building_image.jpg",
+    };
+
+    setUploadedImage(mockFirebaseImage);
+
     const steps = [
-      { message: "1/3: Detecting objects...", delay: 1500 },
-      { message: "2/3: Segmenting material surfaces...", delay: 2000 },
-      { message: "3/3: Finalizing analysis...", delay: 1000 },
+      { message: "1/4: Processing Firebase image...", delay: 1000 },
+      { message: "2/4: Detecting objects...", delay: 1500 },
+      { message: "3/4: Segmenting material surfaces...", delay: 2000 },
+      { message: "4/4: Finalizing analysis...", delay: 1000 },
     ];
 
-    await Promise.all(
-      steps.map(async (step) => {
-        setProcessingStatus(step.message);
-        await new Promise((resolve) => {
-          setTimeout(resolve, step.delay);
-        });
-      })
-    );
+    const processSteps = async () => {
+      await Promise.all(
+        steps.map(
+          (step) =>
+            new Promise((resolve) => {
+              setProcessingStatus(step.message);
+              setTimeout(resolve, step.delay);
+            })
+        )
+      );
+    };
 
-    // Mock analysis results
+    await processSteps();
+
     const mockResults = {
       detected_classes: ["building", "road", "sky", "vegetation"],
       masks: [
-        {
-          material: "Glass",
-          color: COLOR_PALETTE[0],
-          mask_base64:
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        },
-        {
-          material: "Brick",
-          color: COLOR_PALETTE[1],
-          mask_base64:
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        },
-        {
-          material: "Concrete",
-          color: COLOR_PALETTE[2],
-          mask_base64:
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        },
-        {
-          material: "Metal",
-          color: COLOR_PALETTE[3],
-          mask_base64:
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        },
-        {
-          material: "Wood",
-          color: COLOR_PALETTE[4],
-          mask_base64:
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        },
+        { material: "Glass", color: COLOR_PALETTE[0], mask_base64: "..." },
+        { material: "Brick", color: COLOR_PALETTE[1], mask_base64: "..." },
+        { material: "Concrete", color: COLOR_PALETTE[2], mask_base64: "..." },
+        { material: "Metal", color: COLOR_PALETTE[3], mask_base64: "..." },
+        { material: "Wood", color: COLOR_PALETTE[4], mask_base64: "..." },
       ],
     };
 
@@ -125,12 +98,10 @@ const Segment = () => {
 
     setCalculating((prev) => ({ ...prev, [material]: true }));
 
-    // Simulate API call delay
     await new Promise((resolve) => {
-      setTimeout(resolve, 1500);
+      setTimeout(resolve, 1000);
     });
 
-    // Mock area calculation
     const mockArea = (Math.random() * 100 + 10).toFixed(1);
     setCalculatedAreas((prev) => ({ ...prev, [material]: mockArea }));
     setCalculating((prev) => ({ ...prev, [material]: false }));
@@ -143,474 +114,333 @@ const Segment = () => {
     }));
   };
 
-  const resetAnalysis = () => {
-    setCurrentStep("upload");
-    setUploadedImage(null);
-    setAnalysisResults(null);
-    setCalculatedAreas({});
-    setVisibleMasks({});
-    setCalibrationDistance("");
-    setProcessingStatus("");
-  };
+  // const resetAnalysis = () => {
+  //   setCurrentStep("upload");
+  //   setUploadedImage(null);
+  //   setAnalysisResults(null);
+  //   setCalculatedAreas({});
+  //   setVisibleMasks({});
+  //   setCalibrationDistance("");
+  //   setProcessingStatus("");
+  // };
 
-  // Upload Screen
+  // STEP 1: UPLOAD / INITIAL SCREEN
   if (currentStep === "upload") {
     return (
-      <div
-        className="surface-bg min-vh-100 d-flex flex-column justify-content-center align-items-center px-2"
-        style={{ background: "#f8f9fb" }}
-      >
-        <h1
-          className="display-3 fw-bold text-center mb-2"
-          style={{ color: "#181c3a", letterSpacing: "-1px" }}
-        >
-          Urban Material Analyzer
-        </h1>
-        <p
-          className="lead text-center mb-4"
-          style={{ color: "#4a4a4a", fontSize: "1.25rem" }}
-        >
-          Upload an image to analyze building materials and calculate surface
-          areas
-        </p>
-        <div
-          className="card shadow border-0 p-4 mb-4 animate__animated animate__fadeIn surface-upload-card"
-          style={{
-            maxWidth: 520,
-            width: "100%",
-            background: "#fff",
-            borderRadius: 18,
-            cursor: "pointer",
-            transition: "box-shadow .2s",
-          }}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-        >
-          <div className="text-center mb-2">
-            <span
-              role="img"
-              aria-label="folder"
-              style={{ fontSize: 36, color: "#f7b731" }}
-            >
-              📁
-            </span>
-          </div>
-          <h3 className="fw-bold text-center mb-1" style={{ color: "#181c3a" }}>
-            Drag and drop your image here
-          </h3>
-          <div
-            className="text-center text-muted mb-2"
-            style={{ fontSize: "1.05rem" }}
-          >
-            or click to browse files
-          </div>
-          <div
-            className="text-center text-secondary mb-3"
-            style={{ fontSize: ".98rem" }}
-          >
-            Supports <b>JPG</b>, <b>PNG</b>, and other image formats
-          </div>
-          <div className="d-flex justify-content-center">
-            <input
-              ref={fileInputRef}
-              id="segment-file-input"
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleFileUpload(e.target.files[0])}
-              style={{ display: "none" }}
-            />
-            <label
-              className="btn btn-outline-primary px-4 py-2 mb-0"
-              style={{
-                fontWeight: 500,
-                borderRadius: 8,
-                fontSize: "1rem",
-                marginBottom: 0,
-              }}
-              htmlFor="segment-file-input"
-            >
-              Choose File
-            </label>
-            <span
-              className="align-self-center ms-2 text-muted"
-              style={{ fontSize: ".98rem" }}
-            >
-              {uploadedImage ? uploadedImage.name : "No file chosen"}
-            </span>
-          </div>
-          {uploadedImage && (
+      <div className="container py-5">
+        <Card className="text-center">
+          <div className="mb-4">
             <div
-              className="alert alert-success mt-3 mb-0 text-center p-2"
-              style={{ borderRadius: 8, fontSize: ".98rem" }}
+              className="rounded-circle bg-light d-inline-flex align-items-center justify-content-center"
+              style={{ width: "64px", height: "64px" }}
             >
-              Selected file: <strong>{uploadedImage.name}</strong>
+              <PictureOutlined style={{ fontSize: "32px", color: "#888" }} />
             </div>
-          )}
-        </div>
-        {uploadedImage && (
+            <h2 className="mt-3">Waiting for Images</h2>
+            <p className="text-muted">
+              Ready to analyze building materials from captured images
+            </p>
+          </div>
 
-              <button
-                type="button"
-                onClick={startAnalysis}
-                className="btn btn-primary px-4 py-2 ms-3"
-                style={{ fontSize: ".98rem", borderRadius: 6 }}
-              >
-                Start Analysis
-              </button>
-        )}
+          <Row gutter={[16, 16]} className="mb-4">
+            <Col xs={24} md={8}>
+              <Card size="small" className="bg-light border-success">
+                <SearchOutlined
+                  className="text-success mb-2"
+                  style={{ fontSize: "24px" }}
+                />
+                <div className="fw-medium text-success">Object Detection</div>
+              </Card>
+            </Col>
+            <Col xs={24} md={8}>
+              <Card size="small" className="bg-light border-warning">
+                <PartitionOutlined
+                  className="text-warning mb-2"
+                  style={{ fontSize: "24px" }}
+                />
+                <div className="fw-medium text-warning">
+                  Material Segmentation
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} md={8}>
+              <Card size="small" className="bg-light border-primary">
+                <ToolOutlined
+                  className="text-primary mb-2"
+                  style={{ fontSize: "24px" }}
+                />
+                <div className="fw-medium text-primary">Area Calculation</div>
+              </Card>
+            </Col>
+          </Row>
 
+          <Button
+            type="primary"
+            size="large"
+            onClick={startAnalysis}
+            icon={<SyncOutlined />}
+            className="mb-3"
+          >
+            Start Material Analysis
+          </Button>
 
-
-
-
-
-
-        <style>{`
-          .surface-bg {
-            background: #f8f9fb;
-          }
-          .surface-upload-card:hover {
-            box-shadow: 0 8px 32px 0 rgba(24,28,58,0.12), 0 1.5px 6px 0 rgba(24,28,58,0.08);
-          }
-          @media (max-width: 600px) {
-            .surface-upload-card {
-              padding: 1.5rem !important;
+          <Alert
+            message={
+              <div className="d-flex align-items-center">
+                <InfoCircleOutlined className="me-2" />
+                Image will be automatically loaded from Firebase storage
+              </div>
             }
-            .display-3 {
-              font-size: 2.1rem !important;
-            }
-          }
-        `}</style>
+            type="info"
+            showIcon={false}
+            className="mt-3"
+          />
+        </Card>
       </div>
     );
   }
 
-  // Processing Screen
+  // STEP 2: PROCESSING
   if (currentStep === "processing") {
     return (
-      <div className="main-container">
-        <div className="container">
-          <div className="row justify-content-center">
-            <div className="col-12">
-              <div className="card-wrap text-center">
-                <h3 className="mb-4">Analyzing Image</h3>
-                <img
-                  src={uploadedImage.url}
-                  alt="Processing"
-                  className="img-fluid mb-4"
-                  style={{
-                    borderRadius: "10px",
-                    maxHeight: "200px",
-                    objectFit: "cover",
-                  }}
-                />
-                <div className="spinner mb-3"></div>
-                <p
-                  className="mb-2"
-                  style={{ color: "#6c757d", fontSize: "1.1rem" }}
-                >
-                  {processingStatus}
-                </p>
-                <div
-                  className="progress-bar-custom mx-auto"
-                  style={{ width: 200 }}
-                >
-                  <div className="progress-fill"></div>
-                </div>
-              </div>
-            </div>
+      <div className="container py-5 d-flex justify-content-center">
+        <Card style={{ width: "100%", maxWidth: "600px" }}>
+          <h3 className="text-center mb-4">Analyzing Firebase Image</h3>
+
+          {uploadedImage?.url && (
+            <img
+              src={uploadedImage.url}
+              alt="Processing"
+              className="img-fluid rounded mb-4"
+              style={{ maxHeight: "200px", objectFit: "cover" }}
+            />
+          )}
+
+          <div className="text-center mb-4">
+            <LoadingOutlined
+              spin
+              style={{ fontSize: "48px", color: "#1890ff" }}
+            />
+            <p className="mt-3 fw-medium">{processingStatus}</p>
           </div>
-        </div>
+
+          <Progress percent={60} status="active" showInfo={false} />
+        </Card>
       </div>
     );
   }
 
-  // Results Screen
+  // STEP 3: RESULTS
   return (
-    <div className="main-container">
-      <div className="container">
-        <div className="row">
-          <div className="col-12">
-            <div className="card-wrap">
-              <div className="components-wrap text-center">
-                <h3>Analysis Complete</h3>
-                <p>
-                  Interact with the results below to calculate material areas.
-                </p>
+    <div className="container py-4">
+      {/* Header */}
+      <Card className="mb-4 flex  align-items-center flex-wrap w-100%"
+      
+      >
+        <div className="flex-grow-1">
+          <h3 className="mb-1">Analysis Complete</h3>
+          <p className="text-muted mb-0">
+            Interact with the results below to calculate material areas.
+          </p>
+        </div>
+        {/* <Button
+          type="primary"
+          onClick={resetAnalysis}
+          icon={<SyncOutlined />}
+          className="ms-auto"
+        >
+          New Analysis
+        </Button> */}
+      </Card>
+
+      <Row gutter={[24, 24]}>
+        {/* LEFT COLUMN */}
+        <Col xs={24} lg={12}>
+          <Card
+            className="mb-3"
+            title={
+              <>
+                <PictureOutlined /> Uploaded Image
+              </>
+            }
+          >
+            <div className="d-flex align-items-center">
+              <img
+                src={uploadedImage.url}
+                alt="Uploaded"
+                className="rounded"
+                style={{ width: "64px", height: "64px", objectFit: "cover" }}
+              />
+              <div className="ms-3">
+                <div className="fw-bold">{uploadedImage.name}</div>
+                <div className="text-muted small">Analysis completed</div>
               </div>
             </div>
-          </div>
-        </div>
-        <div className="row">
-          <div className="col-lg-6">
-            <div className="card-wrap mb-4">
-              <div className="components-wrap">
-                <h4 className="mb-3">
-                  <i className="fa fa-image mr-2 text-primary"></i>Uploaded
-                  Image
-                </h4>
-                <div className="row align-items-center">
-                  <div className="col-3">
-                    <img
-                      src={uploadedImage.url}
-                      alt="Uploaded"
-                      className="img-fluid"
+          </Card>
+
+          <Card
+            className="mb-3"
+            title={
+              <>
+                <SearchOutlined /> Detected Objects
+              </>
+            }
+          >
+            <div>
+              {analysisResults?.detected_classes.map((obj) => (
+                <Tag key={obj} className="me-2 mb-2">
+                  {obj}
+                </Tag>
+              ))}
+            </div>
+          </Card>
+
+          <Card
+            className="mb-3"
+            title={
+              <>
+                <ToolOutlined /> Calibration
+              </>
+            }
+          >
+            <div>
+              <label className="form-label">Real-world Distance (meters)</label>
+              <Input
+                type="number"
+                step="0.1"
+                placeholder="e.g., 20.0"
+                value={calibrationDistance}
+                onChange={(e) => setCalibrationDistance(e.target.value)}
+                className="mb-2"
+              />
+              <div className="text-muted small">
+                Enter a known distance in the image for area calculations
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            title={
+              <>
+                <PartitionOutlined /> Material Breakdown
+              </>
+            }
+          >
+            <div className="mt-3">
+              {analysisResults?.masks.map((item) => (
+                <div
+                  key={item.material}
+                  className="d-flex justify-content-between align-items-center p-3 bg-light rounded mb-2"
+                >
+                  <div className="d-flex align-items-center">
+                    <div
+                      className="rounded-circle me-2"
                       style={{
-                        borderRadius: "8px",
-                        maxHeight: "60px",
-                        objectFit: "cover",
+                        width: "16px",
+                        height: "16px",
+                        backgroundColor: item.color,
+                        border: "1px solid #ddd",
                       }}
+                    ></div>
+                    <span className="fw-medium">{item.material}</span>
+                    <Button
+                      type="text"
+                      icon={
+                        visibleMasks[item.material] ? (
+                          <EyeOutlined />
+                        ) : (
+                          <EyeInvisibleOutlined />
+                        )
+                      }
+                      onClick={() => toggleMaskVisibility(item.material)}
+                      className="ms-2"
                     />
                   </div>
-                  <div className="col-6">
-                    <h6 className="mb-1" style={{ color: "#495057" }}>
-                      {uploadedImage.name}
-                    </h6>
-                    <small style={{ color: "#6c757d" }}>
-                      Analysis completed
-                    </small>
-                  </div>
-                  <div className="col-3 text-end">
-                    <button
-                      type="button"
-                      onClick={resetAnalysis}
-                      className="btn btn-outline-primary btn-sm"
+                  <div className="d-flex align-items-center">
+                    {calculatedAreas[item.material] ? (
+                      <span className="text-success fw-bold me-3">
+                        {calculatedAreas[item.material]} m²
+                      </span>
+                    ) : (
+                      <span className="text-muted me-3">--- m²</span>
+                    )}
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() => calculateArea(item.material)}
+                      disabled={
+                        calculating[item.material] || !calibrationDistance
+                      }
+                      loading={calculating[item.material]}
                     >
-                      New Image
-                    </button>
+                      Calculate
+                    </Button>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-            <div className="card-wrap mb-4">
-              <div className="components-wrap">
-                <h4 className="mb-3">
-                  <i className="fa fa-search mr-2 text-success"></i>Detected
-                  Objects
-                </h4>
-                <div>
-                  {analysisResults?.detected_classes.map((obj) => (
-                    <span
-                      key={obj}
-                      className="tag-item mr-2 mb-2 d-inline-block"
-                    >
-                      {obj}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="card-wrap mb-4">
-              <div className="components-wrap">
-                <h4 className="mb-3">
-                  <i className="fa fa-ruler mr-2 text-warning"></i>Calibration
-                </h4>
-                <div className="mb-3">
-                  <label
-                    className="form-label font-weight-bold"
-                    style={{ color: "#495057" }}
-                  >
-                    Real-world Distance (meters)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="e.g., 20.0"
-                    value={calibrationDistance}
-                    onChange={(e) => setCalibrationDistance(e.target.value)}
-                    className="form-control mb-2"
-                  />
-                  <small className="form-text text-muted">
-                    Enter a known distance in the image for area calculations
-                  </small>
-                </div>
-              </div>
-            </div>
-            <div className="card-wrap mb-4">
-              <div className="components-wrap">
-                <h4 className="mb-3">
-                  <i className="fa fa-layer-group mr-2 text-purple"></i>Material
-                  Breakdown
-                </h4>
-                <div>
-                  {analysisResults?.masks.map((item) => (
+          </Card>
+        </Col>
+
+        {/* RIGHT COLUMN - VISUALIZER */}
+        <Col xs={24} lg={12}>
+          <Card
+            title={
+              <>
+                <EyeOutlined /> Interactive Visualizer
+              </>
+            }
+          >
+            <div
+              className="position-relative bg-light rounded overflow-hidden"
+              style={{ height: "400px" }}
+            >
+              <img
+                src={uploadedImage.url}
+                alt="Analysis visualization"
+                className="w-100 h-100"
+                style={{ objectFit: "cover" }}
+              />
+              {analysisResults?.masks.map(
+                (item) =>
+                  visibleMasks[item.material] && (
                     <div
                       key={item.material}
-                      className="d-flex align-items-center justify-content-between p-2 mb-2"
+                      className="position-absolute top-0 start-0 w-100 h-100"
                       style={{
-                        border: "1px solid #dee2e6",
-                        borderRadius: "8px",
-                        background: "#fafbfc",
+                        backgroundColor: item.color,
+                        opacity: 0.3,
+                        mixBlendMode: "multiply",
+                        pointerEvents: "none",
                       }}
                     >
-                      <div className="d-flex align-items-center">
-                        <div
-                          className="color-swatch mr-2"
-                          style={{
-                            backgroundColor: item.color,
-                            width: 16,
-                            height: 16,
-                            borderRadius: 8,
-                            border: "2px solid #dee2e6",
-                          }}
-                        ></div>
-                        <span
-                          className="font-weight-bold mr-2"
-                          style={{ color: "#495057" }}
-                        >
-                          {item.material}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => toggleMaskVisibility(item.material)}
-                          className="btn-eye ml-2"
-                          title={
-                            visibleMasks[item.material]
-                              ? "Hide mask"
-                              : "Show mask"
-                          }
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "#6c757d",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <span style={{ fontSize: "14px" }}>
-                            {visibleMasks[item.material] ? "🙈" : "👁"}
-                          </span>
-                        </button>
-                      </div>
-                      <div className="d-flex align-items-center">
-                        {calculatedAreas[item.material] ? (
-                          <span
-                            className="area-result mr-3"
-                            style={{ color: "#28a745", fontWeight: 600 }}
-                          >
-                            {calculatedAreas[item.material]} m²
-                          </span>
-                        ) : (
-                          <span className="mr-3" style={{ color: "#adb5bd" }}>
-                            --- m²
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => calculateArea(item.material)}
-                          disabled={
-                            calculating[item.material] || !calibrationDistance
-                          }
-                          className="btn btn-primary btn-sm"
-                        >
-                          {calculating[item.material] ? (
-                            <span>Calculating...</span>
-                          ) : (
-                            <span>Calculate</span>
-                          )}
-                        </button>
+                      <div className="position-absolute top-0 start-0 m-2 bg-dark text-white px-2 py-1 rounded small">
+                        {item.material}
                       </div>
                     </div>
-                  ))}
+                  )
+              )}
+              {Object.values(visibleMasks).every((v) => !v) && (
+                <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-black bg-opacity-10">
+                  <div className="bg-white p-4 rounded text-center shadow">
+                    <div className="display-4 mb-2">👁</div>
+                    <p className="text-muted small">
+                      Click the eye icons to visualize material masks
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
-          </div>
-          <div className="col-lg-6">
-            <div className="card-wrap mb-4">
-              <div className="components-wrap">
-                <h4 className="mb-3">
-                  <i className="fa fa-eye mr-2 text-info"></i>Interactive
-                  Visualizer
-                </h4>
-                <div
-                  className="visualizer-container position-relative"
-                  style={{
-                    borderRadius: "10px",
-                    overflow: "hidden",
-                    background: "#fff",
-                    minHeight: 300,
-                  }}
-                >
-                  <img
-                    src={uploadedImage.url}
-                    alt="Analysis visualization"
-                    className="img-fluid w-100"
-                    style={{ borderRadius: "10px" }}
-                  />
-                  {analysisResults?.masks.map(
-                    (item) =>
-                      visibleMasks[item.material] && (
-                        <div
-                          key={item.material}
-                          className="mask-overlay position-absolute w-100 h-100"
-                          style={{
-                            backgroundColor: item.color,
-                            opacity: 0.4,
-                            mixBlendMode: "multiply",
-                            top: 0,
-                            left: 0,
-                            borderRadius: "10px",
-                          }}
-                        >
-                          <div
-                            className="mask-label position-absolute"
-                            style={{
-                              top: 8,
-                              left: 8,
-                              background: "rgba(0,0,0,0.8)",
-                              color: "white",
-                              padding: "4px 8px",
-                              borderRadius: 4,
-                              fontSize: "0.8rem",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {item.material}
-                          </div>
-                        </div>
-                      )
-                  )}
-                  {Object.values(visibleMasks).every((v) => !v) && (
-                    <div
-                      className="instructions-overlay position-absolute w-100 h-100 d-flex align-items-center justify-content-center"
-                      style={{
-                        background: "rgba(0,0,0,0.2)",
-                        borderRadius: "10px",
-                        top: 0,
-                        left: 0,
-                      }}
-                    >
-                      <div className="instructions-box bg-white p-4 rounded shadow text-center">
-                        <div style={{ fontSize: "2rem", marginBottom: "10px" }}>
-                          👁
-                        </div>
-                        <p
-                          className="mb-0"
-                          style={{ color: "#6c757d", fontSize: "0.9rem" }}
-                        >
-                          Click the eye icons to visualize material masks
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="mt-3">
-                  <small style={{ color: "#6c757d" }}>
-                    <div>
-                      • Click the eye icons (👁) in the left panel to show/hide
-                      material overlays
-                    </div>
-                    <div>
-                      • Enter a calibration distance to calculate accurate
-                      surface areas
-                    </div>
-                  </small>
-                </div>
-              </div>
+            <div className="mt-3 small text-muted">
+              <p>• Click the eye icons to show/hide material overlays</p>
+              <p>
+                • Enter a calibration distance to calculate accurate surface
+                areas
+              </p>
             </div>
-          </div>
-        </div>
-      </div>
+          </Card>
+        </Col>
+      </Row>
     </div>
   );
 };

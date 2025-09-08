@@ -269,6 +269,10 @@ const Temperature = () => {
     // Shared props for both components
     const sharedProps = {
         socketReady,
+        temperature,
+        isCollecting,
+        setTemperature,
+        setIsCollecting,
         isReconnecting,
         reconnectAttempts,
         maxReconnectAttempts,
@@ -286,11 +290,7 @@ const Temperature = () => {
     // Additional props for manual mode
     const manualProps = {
         ...sharedProps,
-        temperature,
-        isCollecting,
         setCamIP,
-        setTemperature,
-        setIsCollecting,
         switchButton: <Button
             type="default"
             size="large"

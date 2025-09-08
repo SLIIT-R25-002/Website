@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Row, Col, Button, message, Card, Typography, Space, Progress, Statistic, Input, Divider, Upload, Image, Spin } from 'antd';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Row, Col, Button, message, Card, Typography, Space, Statistic, Input, Upload, Image } from 'antd';
 import { 
     RobotOutlined, 
     EnvironmentOutlined, 
@@ -14,8 +14,28 @@ import {
     CameraOutlined,
     DeleteOutlined,
 } from '@ant-design/icons';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../../firebase';
 
 const { Title, Text } = Typography;
+
+// Utility function to convert Firestore timestamp to JavaScript timestamp
+const getTimestampValue = (timestamp) => {
+  if (!timestamp) return 0;
+  
+  // If it's already a number (JavaScript timestamp), return it
+  if (typeof timestamp === 'number') {
+    return timestamp;
+  }
+  
+  // If it's a Firestore timestamp object
+  if (timestamp && typeof timestamp === 'object' && timestamp.seconds !== undefined) {
+    // Convert Firestore timestamp to JavaScript timestamp (milliseconds)
+    return timestamp.seconds * 1000 + Math.floor(timestamp.nanoseconds / 1000000);
+  }
+  
+  return 0;
+};
 
 const AutonomousNavigation = ({ 
     socketReady, 
@@ -29,11 +49,14 @@ const AutonomousNavigation = ({
     autonomousMode,
     targetCoords,
     navigationData,
-    isNavigating,
     setTargetCoords,
     setAutonomousMode,
     setIsNavigating,
     switchButton,
+    temperature,
+    setTemperature,
+    isCollecting,
+    setIsCollecting,
     manualReconnect,
     camIP // Add camIP prop for live feed
 }) => {
@@ -41,20 +64,87 @@ const AutonomousNavigation = ({
     const [uploadedImages, setUploadedImages] = useState([]);
     const [backendImages, setBackendImages] = useState([]);
     const [selectedImage, setSelectedImage] = useState(null);
+    // const [isStreamLoading, setIsStreamLoading] = useState(false);
 
-    // Function to fetch images from backend
-    const fetchBackendImages = async () => {
+    // Auto camera alignment state
+    const [isAutoAligning, setIsAutoAligning] = useState(false);
+    const [targetFound, setTargetFound] = useState(false);
+    const [matchQuality, setMatchQuality] = useState(0);
+    const [numMatches, setNumMatches] = useState(0);
+    const searchPattern = useRef({ step: 0, direction: 1 });
+    const frameCheckInterval = useRef(null);
+    const centeringAttempts = useRef(0);
+    const isAutoAligningRef = useRef(false);
+    const [alignmentStatus, setAlignmentStatus] = useState('idle'); // 'idle', 'searching', 'centering', 'confirmed'
+    // eslint-disable-next-line no-unused-vars
+    const [camAngle, setCamAngle] = useState({V_TURN_CAM: 90, H_TURN_CAM: 90});
+
+    const [frameImg, setFrameImg] = useState(null);
+
+    // Function to fetch segmented images from backend
+    const fetchImages = async () => {
         try {
-            // Replace with your actual backend endpoint
-            const response = await fetch('/api/navigation/images');
-            const data = await response.json();
-            if (data.status !== 'error') {
-                setBackendImages(data);
-            } else {
-                console.error('Backend error:', data.message);
+            // Get the current session ID from localStorage (same as CaptureImages)
+            const sessionId = localStorage.getItem("heatscape_session_id");
+            
+            if (!sessionId) {
+                console.warn('No active session found');
+                setBackendImages([]);
+                return;
             }
+            
+            // Fetch images from the session's images subcollection
+            const imagesCollection = collection(db, "sessions", sessionId, "images");
+            const snapshot = await getDocs(imagesCollection);
+            
+            const segmentedImages = [];
+            
+            snapshot.forEach((doc) => {
+                const imageData = doc.data();
+                const parentGps = imageData.gps;
+                const parentGyro = imageData.gyro;
+                const parentTimestamp = imageData.timestamp;
+                
+                // If the image has segments, extract them
+                if (imageData.segments && Array.isArray(imageData.segments)) {
+                    imageData.segments.forEach((segment, index) => {
+                        segmentedImages.push({
+                            uid: `${doc.id}_segment_${index}`, // Unique ID for each segment
+                            id: `${doc.id}_segment_${index}`,
+                            parentImageId: doc.id,
+                            segmentIndex: index,
+                            
+                            // Segment specific data
+                            imageUrl: segment.segmentImageUrl,
+                            surfaceArea: segment.surfaceArea,
+                            material: segment.material,
+                            temperature: segment.temperature,
+                            humidity: segment.humidity,
+                            
+                            // Inherited from parent image
+                            gps: parentGps,
+                            gyro: parentGyro,
+                            timestamp: parentTimestamp,
+                            
+                            // For compatibility with existing code
+                            coordinates: parentGps || null,
+                            alt: `Segment ${index + 1} - ${segment.material || 'Unknown material'}`,
+                            src: segment.segmentImageUrl,
+                            url: segment.segmentImageUrl
+                        });
+                    });
+                }
+            });
+            
+            // Sort by timestamp (newest first) - handle both Firestore and JS timestamps
+            segmentedImages.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+            
+            setBackendImages(segmentedImages);
+            console.log(`Fetched ${segmentedImages.length} segmented images from session ${sessionId}`, segmentedImages);
+            
         } catch (error) {
             console.error('Failed to fetch backend images:', error);
+            setBackendImages([]);
         }
     };
 
@@ -220,7 +310,8 @@ const AutonomousNavigation = ({
                 
                 // Set autonomous mode and navigation state
                 setIsNavigating(true);
-                
+                // setIsStreamLoading(true);
+
             } else {
                 message.error(`Failed to start video stream: ${responseData.message}`);
             }
@@ -242,6 +333,8 @@ const AutonomousNavigation = ({
             if (responseData.status !== 'error') {
                 message.success('Video stream stopped successfully');
                 console.log('Stream stop response:', responseData);
+                setAutonomousMode(false);
+                setIsNavigating(false);
                 return true;
             }
             return false;
@@ -251,6 +344,253 @@ const AutonomousNavigation = ({
             return false;
         }
     };
+
+    // Auto camera alignment functions
+    const checkFrameMatches = useCallback(async () => {
+        try {
+            const response = await fetch('http://localhost:5003/api/next_frame');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.matches) {
+                const { matches, num_matches: numMatchesLocal, visualization_base64: base64Img } = data;
+                const { keypoints_query: keypointsQuery, confidence } = matches;
+                
+                // Calculate average confidence score
+                const avgConfidence = confidence && confidence.length > 0 
+                    ? confidence.reduce((sum, conf) => sum + conf, 0) / confidence.length 
+                    : 0;
+                
+                setMatchQuality(avgConfidence);
+                setNumMatches(numMatchesLocal || 0);
+                setFrameImg(base64Img)
+                
+                // Calculate if target is centered (image center assumed to be 320, 240 for 640x480)
+                const imageCenterX = 320;
+                const imageCenterY = 240;
+                const centerThreshold = 50; // pixels
+                
+                
+                if (numMatchesLocal > 10 && avgConfidence > 0.4) { // Good matches found
+                    console.log(avgConfidence, numMatchesLocal);
+                    
+                    setTargetFound(true);
+                    
+                    // Calculate average position of matched keypoints in query image
+                    if (keypointsQuery && confidence) {
+                        const goodMatches = keypointsQuery
+                            .map((kp, i) => ({ x: kp[0], y: kp[1], conf: confidence[i] }))
+                            .filter(m => m.conf >= 0.7);
+
+                        if (goodMatches.length >= 20) {
+                            const totalConf = goodMatches.reduce((s, m) => s + m.conf, 0);
+                            const avgX = goodMatches.reduce((s, m) => s + m.x * m.conf, 0) / totalConf;
+                            const avgY = goodMatches.reduce((s, m) => s + m.y * m.conf, 0) / totalConf;
+
+                            const offsetX = avgX - imageCenterX;
+                            const offsetY = avgY - imageCenterY;
+                            const distanceFromCenter = Math.sqrt(offsetX ** 2 + offsetY ** 2);
+
+                            return {
+                                found: true,
+                                centered: distanceFromCenter < centerThreshold,
+                                offsetX, offsetY,
+                                confidence: avgConfidence,
+                                matches: numMatchesLocal
+                            };
+                        }
+                    }
+                    // Matches found but no keypoint data
+                    return {
+                        found: true,
+                        centered: false, // Can't determine position without keypoints
+                        offsetX: 0,
+                        offsetY: 0,
+                        confidence: avgConfidence,
+                        matches: numMatchesLocal
+                    };                    
+                }
+                setTargetFound(false);
+                return { found: false, centered: false, confidence: avgConfidence, matches: numMatchesLocal || 0 };                
+            }
+            setTargetFound(false);
+            return { found: false, centered: false, confidence: 0, matches: 0 };            
+        } catch (error) {
+            console.error(`Error checking frame matches: ${error.message}`);
+            return { found: false, centered: false, confidence: 0, matches: 0 };
+        }
+    }, []);
+
+    const moveCameraToCenter = useCallback((offsetX, offsetY) => {
+        const moveThreshold = 20; // Minimum offset to trigger movement
+        const moveStep = 5; // Degrees per movement step
+        
+        if (Math.abs(offsetX) > moveThreshold) {
+            setCamAngle(prev => {
+                const newHAngle = offsetX > 0 
+                    ? Math.max(0, prev.H_TURN_CAM - moveStep)   // Move left if target is right of center
+                    : Math.min(180, prev.H_TURN_CAM + moveStep); // Move right if target is left of center
+                sendCommand(`H_TURN_CAM:${newHAngle}`);
+                return { ...prev, H_TURN_CAM: newHAngle };
+            });
+        }
+        
+        if (Math.abs(offsetY) > moveThreshold) {
+            setCamAngle(prev => {
+                const newVAngle = offsetY > 0 
+                    ? Math.min(180, prev.V_TURN_CAM + moveStep)  // Move down if target is below center
+                    : Math.max(0, prev.V_TURN_CAM - moveStep);   // Move up if target is above center
+                sendCommand(`V_TURN_CAM:${newVAngle}`);
+                return { ...prev, V_TURN_CAM: newVAngle };
+            });
+        }
+    }, [sendCommand]);
+
+    const performSearchPattern = useCallback(() => {
+        const { step, direction } = searchPattern.current;
+        const maxSteps = 8; // Complete search pattern
+        const searchStep = 15; // Degrees per search step
+        
+        if (step >= maxSteps) {
+            // Reset search pattern and try different approach
+            if(direction < 0) return false; // Indicate search pattern completed
+            searchPattern.current = ({ step: 0, direction: -direction });
+            console.log('🔍 Completed search pattern, trying different direction...');
+            return true; 
+        }
+        
+        // Horizontal sweep pattern
+        setCamAngle(prev => {
+            const newHAngle = Math.max(0, Math.min(180, 
+                90 + (direction * searchStep * Math.floor((step + 1) / 2))
+            ));
+            sendCommand(`H_TURN_CAM:${newHAngle}`);
+            searchPattern.current = {
+                ...searchPattern.current,
+                step: step + 1,
+            };
+            return { ...prev, H_TURN_CAM: newHAngle };
+        });
+        
+        return true; // Continue searching
+    }, [sendCommand]);
+
+    const startAutoAlignment = useCallback(async () => {
+        if (isAutoAligning) return;
+        
+        setIsAutoAligning(true);
+        isAutoAligningRef.current = true;
+        setAlignmentStatus('searching');
+        setTargetFound(false);
+        setMatchQuality(0);
+        setNumMatches(0);
+        searchPattern.current = ({ step: 0, direction: 1 });
+        centeringAttempts.current = 0;
+        
+        message.info('🎯 Starting automatic camera alignment...');
+        
+        // First check if target is already in view
+        const initialCheck = await checkFrameMatches();
+        
+        if (initialCheck.found) {
+            if (initialCheck.centered) {
+                setAlignmentStatus('confirmed');
+                setIsAutoAligning(false);
+                isAutoAligningRef.current = false;
+                message.success('✅ Target already centered!');
+                return;
+            } 
+            setAlignmentStatus('centering');
+            message.info('🎯 Target found, centering...');            
+        }
+        
+        // Start the alignment process with recursive checking
+        const performAlignmentCheck = async () => {
+            if (!isAutoAligningRef.current) return;
+            console.log('🔄 Checking frame for target...');
+            
+            try {
+                const result = await checkFrameMatches();
+                
+                if (result.found) {
+                    if (alignmentStatus === 'searching') {
+                        setAlignmentStatus('centering');
+                        message.info(`🎯 Target found! Matches: ${result.matches}, Confidence: ${(result.confidence * 100).toFixed(1)}%`);
+                    }
+                    
+                    if (result.centered) {
+                        centeringAttempts.current += 1;
+                        if (centeringAttempts.current >= 3) { // Confirm centering over multiple frames
+                            setAlignmentStatus('confirmed');
+                            setIsAutoAligning(false);
+                            isAutoAligningRef.current = false;
+                            message.success('✅ Target successfully centered and confirmed!');
+                            return;
+                        } 
+                        console.log(`🎯 Target centered (${centeringAttempts.current}/3 confirmations)`);
+                    } else {
+                        centeringAttempts.current = 0; // Reset confirmation counter
+                        moveCameraToCenter(result.offsetX, result.offsetY);
+                        console.log(`🔧 Adjusting camera: offset(${result.offsetX.toFixed(1)}, ${result.offsetY.toFixed(1)}) | Matches: ${result.matches}`);
+                    }
+                } else {
+                    if (alignmentStatus === 'centering') {
+                        // Lost target while centering, go back to searching
+                        setAlignmentStatus('searching');
+                        console.log('🔍 Target lost, resuming search...');
+                    }
+                    
+                    // Continue search pattern
+                    const continueSearch = performSearchPattern();
+                    if (!continueSearch) {
+                        // Search pattern completed without finding target
+                        setIsAutoAligning(false);
+                        isAutoAligningRef.current = false;
+                        setAlignmentStatus('idle');
+                        message.error('❌ Auto-alignment failed: Target not found after complete search');
+                        
+                        // Return camera to center position
+                        sendCommand('V_TURN_CAM:90');
+                        sendCommand('H_TURN_CAM:90');
+                        setCamAngle({ V_TURN_CAM: 90, H_TURN_CAM: 90 });
+                        return;
+                    } 
+                    console.log(`🔍 Searching... Matches: ${result.matches || 0}, Confidence: ${(result.confidence * 100).toFixed(1)}%`);
+                }
+            } catch (error) {
+                console.error('Error during alignment check:', error);
+            }
+            
+            // Schedule next check after current one completes (with a small delay)
+            if (isAutoAligningRef.current) {
+                frameCheckInterval.current = setTimeout(performAlignmentCheck, 1000);
+            }
+        };
+        
+        // Start the first check
+        performAlignmentCheck();
+        
+    }, [isAutoAligning, alignmentStatus, checkFrameMatches, moveCameraToCenter, performSearchPattern, sendCommand]);
+
+    const stopAutoAlignment = useCallback(() => {
+        if (frameCheckInterval.current) {
+            clearTimeout(frameCheckInterval.current); // Now using clearTimeout instead of clearInterval
+            frameCheckInterval.current = null;
+        }
+        
+        setIsAutoAligning(false);
+        isAutoAligningRef.current = false;
+        setAlignmentStatus('idle');
+        setTargetFound(false);
+        setMatchQuality(0);
+        setNumMatches(0);
+        centeringAttempts.current = 0;
+        
+        message.info('🛑 Auto-alignment stopped');
+    }, []);
 
 
     // Add CSS animation for pulse effect
@@ -272,7 +612,7 @@ const AutonomousNavigation = ({
 
     // Fetch backend images on component mount
     useEffect(() => {
-        fetchBackendImages();
+        fetchImages();
     }, []);
 
     // Set initial current processing image when images are available
@@ -282,6 +622,13 @@ const AutonomousNavigation = ({
             setSelectedImage(allImages[0]);
         }
     }, [backendImages, uploadedImages, selectedImage]);
+
+    // Cleanup auto-alignment on unmount
+    useEffect(() => () => {
+            if (frameCheckInterval.current) {
+                clearTimeout(frameCheckInterval.current);
+            }
+    }, []);
 
     return (
         <div style={{ 
@@ -420,594 +767,495 @@ const AutonomousNavigation = ({
                                         }
                                     >
                                         <Row gutter={[16, 16]}>
-                                            {(autonomousMode) ?
+                                            {autonomousMode &&
                                             <Col span={24}>
-                                                <div style={{
-                                                    width: '100%',
-                                                    aspectRatio: '4/3',
-                                                    border: '3px solid #52c41a',
-                                                    borderRadius: 12,
-                                                    overflow: 'hidden',
-                                                    position: 'relative',
-                                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                                    backgroundColor: '#f0f2f5',
-                                                    marginBottom: '16px'
-                                                }}>
-                                                    {isNavigating ?
-                                                        <iframe
-                                                            src="http://localhost:5003/api/video_stream?show_keypoints=true"
-                                                            title="Camera Stream"
-                                                            style={{ width: '100%', height: '100%', border: 'none' }}
-                                                            allow="camera"
-                                                        />
-                                                        :
-                                                        <Spin size="large" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} />
-                                                    }
-                                                </div>
+                                                <Image src={`data:image/png;base64,${frameImg}`} />
                                             </Col>
-                                            :
-                                            <> 
-                                                {/* Left Side: Image Gallery and Upload */}
-                                                <Col xs={24} lg={12}>
-                                                    <div style={{ textAlign: 'center' }}>
-                                                        <div style={{ marginBottom: '16px' }}>
-                                                            <Text strong style={{ fontSize: '14px', color: '#1890ff' }}>
-                                                                <PictureOutlined /> Target Image
-                                                            </Text>
-                                                        </div>
-                                                        
-                                                        {/* Show upload only if no images exist */}
-                                                        {backendImages.length === 0 && uploadedImages.length === 0 && (
-                                                            <Upload.Dragger
-                                                                customRequest={handleImageUpload}
-                                                                accept="image/*"
-                                                                showUploadList={false}
-                                                                style={{ marginBottom: '16px', height: '120px' }}
-                                                                disabled={autonomousMode}
-                                                            >
-                                                                <div style={{ padding: '16px' }}>
-                                                                    <UploadOutlined style={{ fontSize: '32px', color: '#1890ff', marginBottom: '8px' }} />
-                                                                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                                                                        Upload Target Image
-                                                                    </div>
-                                                                    <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}>
-                                                                        Click or drag image to upload
-                                                                    </div>
+                                            }
+                                            {/* Left Side: Image Gallery and Upload */}
+                                            <Col xs={24} lg={12}>
+                                                <div style={{ textAlign: 'center' }}>
+                                                    {!autonomousMode &&
+                                                    <div style={{ marginBottom: '16px' }}>
+                                                        <Text strong style={{ fontSize: '14px', color: '#1890ff' }}>
+                                                            <PictureOutlined /> Target Image
+                                                        </Text>
+                                                    </div>
+                                                    }
+                                                    
+                                                    {/* Show upload only if no images exist */}
+                                                    {backendImages.length === 0 && uploadedImages.length === 0 && (
+                                                        <Upload.Dragger
+                                                            customRequest={handleImageUpload}
+                                                            accept="image/*"
+                                                            showUploadList={false}
+                                                            style={{ marginBottom: '16px', height: '120px' }}
+                                                            disabled={autonomousMode}
+                                                        >
+                                                            <div style={{ padding: '16px' }}>
+                                                                <UploadOutlined style={{ fontSize: '32px', color: '#1890ff', marginBottom: '8px' }} />
+                                                                <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                                                                    Upload Target Image
                                                                 </div>
-                                                            </Upload.Dragger>
-                                                        )}
-
-                                                        {/* Current Processing Image (Large Display) */}
-                                                        {selectedImage && (
-                                                            <div style={{ marginBottom: '16px' }}>
-                                                                <div style={{
-                                                                    border: '2px solid #1890ff',
-                                                                    borderRadius: '8px',
-                                                                    overflow: 'hidden',
-                                                                    position: 'relative',
-                                                                    backgroundColor: '#f0f2f5',
-                                                                    height: '200px'
-                                                                }}>
-                                                                    <Image
-                                                                        src={selectedImage.url}
-                                                                        alt={selectedImage.name}
-                                                                        style={{ 
-                                                                            width: '100%', 
-                                                                            height: '100%', 
-                                                                            objectFit: 'cover',
-                                                                            cursor: 'pointer'
-                                                                        }}
-                                                                        onClick={() => {
-                                                                            setSelectedImage(selectedImage);
-                                                                        }}
-                                                                        preview={false}
-                                                                    />
-                                                                    <div
-                                                                        style={{
-                                                                            position: 'absolute',
-                                                                            bottom: 0,
-                                                                            left: 0,
-                                                                            right: 0,
-                                                                            background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
-                                                                            color: 'white',
-                                                                            padding: '8px 12px',
-                                                                            fontSize: '12px',
-                                                                        }}
-                                                                        >
-                                                                        <div style={{ fontWeight: 'bold' }}>{selectedImage.name}</div>
-
-                                                                        {selectedImage.coordinates ? (
-                                                                            <div style={{ fontSize: '10px', opacity: 0.9 }}>
-                                                                            📍 {selectedImage.coordinates.lat.toFixed(4)}, {selectedImage.coordinates.lng.toFixed(4)}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <Space size="small" style={{ marginTop: 4 }}>
-                                                                                <Input
-                                                                                    placeholder="Lat"
-                                                                                    value={targetCoords.lat}
-                                                                                    onChange={(e) => setTargetCoords((prev) => ({ ...prev, lat: e.target.value }))}
-                                                                                    style={{ width: 100 }}
-                                                                                    size="small"
-                                                                                />
-                                                                                <Input
-                                                                                    placeholder="Lng"
-                                                                                    value={targetCoords.lng}
-                                                                                    onChange={(e) => setTargetCoords((prev) => ({ ...prev, lng: e.target.value }))}
-                                                                                    style={{ width: 100 }}
-                                                                                    size="small"
-                                                                                />
-                                                                                <Button type="primary" size="small" onClick={() => handleSetImageCoordinates(selectedImage.uid, targetCoords)}>
-                                                                                    Set
-                                                                                </Button>
-                                                                            </Space>
-                                                                        )}
-                                                                        </div>
+                                                                <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}>
+                                                                    Click or drag image to upload
                                                                 </div>
                                                             </div>
-                                                        )}
+                                                        </Upload.Dragger>
+                                                    )}
 
-                                                        {/* Horizontal Image List */}
-                                                        {(backendImages.length > 0 || uploadedImages.length > 0) && (
-                                                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                                                <div style={{ 
-                                                                    display: 'flex', 
-                                                                    justifyContent: 'space-between', 
-                                                                    alignItems: 'center', 
-                                                                    marginBottom: '8px' 
-                                                                }}>
-                                                                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                                                                        Available Images ({backendImages.length + uploadedImages.length})
-                                                                    </Text>
-                                                                    {uploadedImages.length === 0 && (
-                                                                        <Upload
-                                                                            customRequest={handleImageUpload}
-                                                                            accept="image/*"
-                                                                            showUploadList={false}
+                                                    {/* Current Processing Image (Large Display) */}
+                                                    {(selectedImage && !autonomousMode) && (
+                                                        <div style={{ marginBottom: '16px' }}>
+                                                            <div style={{
+                                                                border: '2px solid #1890ff',
+                                                                borderRadius: '8px',
+                                                                overflow: 'hidden',
+                                                                position: 'relative',
+                                                                backgroundColor: '#f0f2f5',
+                                                                height: '200px'
+                                                            }}>
+                                                                <Image
+                                                                    src={selectedImage.url}
+                                                                    alt={selectedImage.name}
+                                                                    style={{ 
+                                                                        width: '100%', 
+                                                                        height: '100%', 
+                                                                        objectFit: 'cover',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                    onClick={() => {
+                                                                        setSelectedImage(selectedImage);
+                                                                    }}
+                                                                    preview={false}
+                                                                />
+                                                                <div
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        bottom: 0,
+                                                                        left: 0,
+                                                                        right: 0,
+                                                                        background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+                                                                        color: 'white',
+                                                                        padding: '8px 12px',
+                                                                        fontSize: '12px',
+                                                                    }}
+                                                                    >
+                                                                    <div style={{ fontWeight: 'bold' }}>{selectedImage.name}</div>
+
+                                                                    {selectedImage.coordinates ? (
+                                                                        <div style={{ fontSize: '10px', opacity: 0.9 }}>
+                                                                        📍 {selectedImage.coordinates.lat.toFixed(4)}, {selectedImage.coordinates.lng.toFixed(4)}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <Space size="small" style={{ marginTop: 4 }}>
+                                                                            <Input
+                                                                                placeholder="Lat"
+                                                                                value={targetCoords.lat}
+                                                                                onChange={(e) => setTargetCoords((prev) => ({ ...prev, lat: e.target.value }))}
+                                                                                style={{ width: 100 }}
+                                                                                size="small"
+                                                                            />
+                                                                            <Input
+                                                                                placeholder="Lng"
+                                                                                value={targetCoords.lng}
+                                                                                onChange={(e) => setTargetCoords((prev) => ({ ...prev, lng: e.target.value }))}
+                                                                                style={{ width: 100 }}
+                                                                                size="small"
+                                                                            />
+                                                                            <Button type="primary" size="small" onClick={() => handleSetImageCoordinates(selectedImage.uid, targetCoords)}>
+                                                                                Set
+                                                                            </Button>
+                                                                        </Space>
+                                                                    )}
+                                                                    </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Horizontal Image List */}
+                                                    {(backendImages.length > 0 || uploadedImages.length > 0) && (
+                                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                justifyContent: 'space-between', 
+                                                                alignItems: 'center', 
+                                                                marginBottom: '8px' 
+                                                            }}>
+                                                                <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                                    Available Images ({backendImages.length + uploadedImages.length})
+                                                                </Text>
+                                                                {uploadedImages.length === 0 && (
+                                                                    <Upload
+                                                                        customRequest={handleImageUpload}
+                                                                        accept="image/*"
+                                                                        showUploadList={false}
+                                                                        disabled={autonomousMode}
+                                                                    >
+                                                                        <Button 
+                                                                            size="small" 
+                                                                            icon={<UploadOutlined />}
+                                                                            type="dashed"
                                                                             disabled={autonomousMode}
                                                                         >
-                                                                            <Button 
-                                                                                size="small" 
-                                                                                icon={<UploadOutlined />}
-                                                                                type="dashed"
-                                                                                disabled={autonomousMode}
-                                                                            >
-                                                                                Add
-                                                                            </Button>
-                                                                        </Upload>
-                                                                    )}
-                                                                </div>
-                                                                
-                                                                <div style={{
-                                                                    display: 'flex',
-                                                                    gap: '8px',
-                                                                    overflowX: 'auto',
-                                                                    padding: '8px 0',
-                                                                    border: '1px solid #d9d9d9',
-                                                                    borderRadius: '6px',
-                                                                    backgroundColor: '#fafafa'
-                                                                }}>
-                                                                    {/* Backend Images */}
-                                                                    {backendImages.map((item) => (
-                                                                        <div
-                                                                            key={item.uid}
-                                                                            style={{
-                                                                                position: 'relative',
-                                                                                height: '60px',
-                                                                                width: '60px',
-                                                                                border: selectedImage?.uid === item.uid ? '2px solid #1890ff' : '2px solid transparent',
-                                                                                borderRadius: '6px',
-                                                                                overflow: 'hidden',
-                                                                                cursor: 'pointer',
-                                                                                backgroundColor: '#fff',
-                                                                            }}
-                                                                            onClick={() => handleImageSelect(item)}
-                                                                        >
-                                                                            <Image
-                                                                                src={item.url}
-                                                                                alt={item.name}
-                                                                                style={{ 
-                                                                                    width: '100%', 
-                                                                                    height: '100%', 
-                                                                                    objectFit: 'cover' 
-                                                                                }}
-                                                                                preview={false}
-                                                                            />
-                                                                            {item.coordinates && (
-                                                                                <div style={{
-                                                                                    position: 'absolute',
-                                                                                    top: '2px',
-                                                                                    right: '2px',
-                                                                                    background: 'rgba(82, 196, 26, 0.8)',
-                                                                                    borderRadius: '50%',
-                                                                                    width: '12px',
-                                                                                    height: '12px',
-                                                                                    display: 'flex',
-                                                                                    alignItems: 'center',
-                                                                                    justifyContent: 'center'
-                                                                                }}>
-                                                                                    <div style={{ 
-                                                                                        width: '6px', 
-                                                                                        height: '6px', 
-                                                                                        background: '#fff', 
-                                                                                        borderRadius: '50%' 
-                                                                                    }} />
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    ))}
-
-                                                                    {/* Uploaded Images */}
-                                                                    {uploadedImages.map((item) => (
-                                                                        <div
-                                                                            key={item.uid}
-                                                                            style={{
-                                                                                position: 'relative',
-                                                                                width: '60px',
-                                                                                height: '60px',
-                                                                                border: selectedImage?.uid === item.uid ? '2px solid #1890ff' : '2px solid transparent',
-                                                                                borderRadius: '6px',
-                                                                                overflow: 'hidden',
-                                                                                cursor: 'pointer',
-                                                                                backgroundColor: '#fff'
-                                                                            }}
-                                                                            onClick={() => handleImageSelect(item)}
-                                                                        >
-                                                                            <Image
-                                                                                src={item.url}
-                                                                                alt={item.name}
-                                                                                style={{ 
-                                                                                    width: '100%', 
-                                                                                    height: '100%', 
-                                                                                    objectFit: 'cover' 
-                                                                                }}
-                                                                                preview={false}
-                                                                            />
-                                                                            {item.coordinates && (
-                                                                                <div style={{
-                                                                                    position: 'absolute',
-                                                                                    top: '2px',
-                                                                                    right: '2px',
-                                                                                    background: 'rgba(82, 196, 26, 0.8)',
-                                                                                    borderRadius: '50%',
-                                                                                    width: '12px',
-                                                                                    height: '12px',
-                                                                                    display: 'flex',
-                                                                                    alignItems: 'center',
-                                                                                    justifyContent: 'center'
-                                                                                }}>
-                                                                                    <div style={{ 
-                                                                                        width: '6px', 
-                                                                                        height: '6px', 
-                                                                                        background: '#fff', 
-                                                                                        borderRadius: '50%' 
-                                                                                    }} />
-                                                                                </div>
-                                                                            )}
-                                                                            <Button
-                                                                                type="text"
-                                                                                size="small"
-                                                                                danger
-                                                                                icon={<DeleteOutlined />}
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    handleImageDelete(item.uid);
-                                                                                }}
-                                                                                disabled={autonomousMode}
-                                                                                style={{
-                                                                                    position: 'absolute',
-                                                                                    top: '2px',
-                                                                                    left: '2px',
-                                                                                    minWidth: '20px',
-                                                                                    height: '20px',
-                                                                                    padding: 0,
-                                                                                    background: 'rgba(255, 77, 79, 0.8)',
-                                                                                    color: 'white',
-                                                                                    fontSize: '10px'
-                                                                                }}
-                                                                            />
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
+                                                                            Add
+                                                                        </Button>
+                                                                    </Upload>
+                                                                )}
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                </Col>
+                                                            
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                gap: '8px',
+                                                                overflowX: 'auto',
+                                                                padding: '8px 0',
+                                                                border: '1px solid #d9d9d9',
+                                                                borderRadius: '6px',
+                                                                backgroundColor: '#fafafa'
+                                                            }}>
+                                                                {/* Backend Images */}
+                                                                {backendImages.map((item) => (
+                                                                    <div
+                                                                        key={item.uid}
+                                                                        style={{
+                                                                            position: 'relative',
+                                                                            height: '60px',
+                                                                            width: '60px',
+                                                                            border: selectedImage?.uid === item.uid ? '2px solid #1890ff' : '2px solid transparent',
+                                                                            borderRadius: '6px',
+                                                                            overflow: 'hidden',
+                                                                            cursor: 'pointer',
+                                                                            backgroundColor: '#fff',
+                                                                        }}
+                                                                        onClick={() => handleImageSelect(item)}
+                                                                    >
+                                                                        <Image
+                                                                            src={item.url}
+                                                                            alt={item.name}
+                                                                            style={{
+                                                                                width: '100%',
+                                                                                height: '100%',
+                                                                                objectFit: 'cover'
+                                                                            }}
+                                                                            preview={false}
+                                                                        />
+                                                                        {item.coordinates && (
+                                                                            <div style={{
+                                                                                position: 'absolute',
+                                                                                top: '2px',
+                                                                                right: '2px',
+                                                                                background: 'rgba(82, 196, 26, 0.8)',
+                                                                                borderRadius: '50%',
+                                                                                width: '12px',
+                                                                                height: '12px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'center'
+                                                                            }}>
+                                                                                <div style={{ 
+                                                                                    width: '6px', 
+                                                                                    height: '6px', 
+                                                                                    background: '#fff', 
+                                                                                    borderRadius: '50%' 
+                                                                                }} />
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
 
-                                                {/* Right Side: Live Camera Feed */}
-                                                <Col xs={24} lg={12}>
-                                                    <div style={{ textAlign: 'center' }}>
+                                                                {/* Uploaded Images */}
+                                                                {uploadedImages.map((item) => (
+                                                                    <div
+                                                                        key={item.uid}
+                                                                        style={{
+                                                                            position: 'relative',
+                                                                            width: '60px',
+                                                                            height: '60px',
+                                                                            border: selectedImage?.uid === item.uid ? '2px solid #1890ff' : '2px solid transparent',
+                                                                            borderRadius: '6px',
+                                                                            overflow: 'hidden',
+                                                                            cursor: 'pointer',
+                                                                            backgroundColor: '#fff'
+                                                                        }}
+                                                                        onClick={() => handleImageSelect(item)}
+                                                                    >
+                                                                        <Image
+                                                                            src={item.url}
+                                                                            alt={item.name}
+                                                                            style={{ 
+                                                                                width: '100%', 
+                                                                                height: '100%', 
+                                                                                objectFit: 'cover' 
+                                                                            }}
+                                                                            preview={false}
+                                                                        />
+                                                                        {item.coordinates && (
+                                                                            <div style={{
+                                                                                position: 'absolute',
+                                                                                top: '2px',
+                                                                                right: '2px',
+                                                                                background: 'rgba(82, 196, 26, 0.8)',
+                                                                                borderRadius: '50%',
+                                                                                width: '12px',
+                                                                                height: '12px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'center'
+                                                                            }}>
+                                                                                <div style={{ 
+                                                                                    width: '6px', 
+                                                                                    height: '6px', 
+                                                                                    background: '#fff', 
+                                                                                    borderRadius: '50%' 
+                                                                                }} />
+                                                                            </div>
+                                                                        )}
+                                                                        <Button
+                                                                            type="text"
+                                                                            size="small"
+                                                                            danger
+                                                                            icon={<DeleteOutlined />}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleImageDelete(item.uid);
+                                                                            }}
+                                                                            disabled={autonomousMode}
+                                                                            style={{
+                                                                                position: 'absolute',
+                                                                                top: '2px',
+                                                                                left: '2px',
+                                                                                minWidth: '20px',
+                                                                                height: '20px',
+                                                                                padding: 0,
+                                                                                background: 'rgba(255, 77, 79, 0.8)',
+                                                                                color: 'white',
+                                                                                fontSize: '10px'
+                                                                            }}
+                                                                        />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </Col>
+
+                                            {/* Right Side: Live Camera Feed */}
+                                            <Col xs={24} lg={12}>
+                                                <div style={{ textAlign: 'center' }}>
+                                                    {!autonomousMode &&
                                                         <div style={{ marginBottom: '16px' }}>
                                                             <Text strong style={{ fontSize: '16px', color: '#52c41a' }}>
                                                                 <CameraOutlined /> Live Camera Feed
                                                             </Text>
                                                         </div>
-                                                        
-                                                        {camIP ? (
-                                                            <>
+                                                    }
+                                                    
+                                                    {(camIP) ? (
+                                                        <>
+                                                            {!autonomousMode &&
+                                                            <div style={{
+                                                                width: '100%',
+                                                                maxWidth: 300,
+                                                                aspectRatio: '4/3',
+                                                                border: '3px solid #52c41a',
+                                                                borderRadius: 12,
+                                                                overflow: 'hidden',
+                                                                position: 'relative',
+                                                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                                                backgroundColor: '#f0f2f5',
+                                                                marginBottom: '16px'
+                                                            }}>
+                                                                <iframe
+                                                                    src={`http://${camIP}:81/stream`}
+                                                                    title="Camera Stream"
+                                                                    style={{ width: '100%', height: '100%', border: 'none' }}
+                                                                    allow="camera"
+                                                                />
                                                                 <div style={{
-                                                                    width: '100%',
-                                                                    maxWidth: 300,
-                                                                    aspectRatio: '4/3',
-                                                                    border: '3px solid #52c41a',
-                                                                    borderRadius: 12,
-                                                                    overflow: 'hidden',
-                                                                    position: 'relative',
-                                                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                                                    backgroundColor: '#f0f2f5',
-                                                                    marginBottom: '16px'
+                                                                    position: 'absolute',
+                                                                    top: 8,
+                                                                    left: 8,
+                                                                    backgroundColor: 'rgba(0,0,0,0.7)',
+                                                                    color: 'white',
+                                                                    padding: '4px 8px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '10px'
                                                                 }}>
-                                                                    <iframe
-                                                                        src={`http://${camIP}:81/stream`}
-                                                                        title="Camera Stream"
-                                                                        style={{ width: '100%', height: '100%', border: 'none' }}
-                                                                        allow="camera"
-                                                                    />
-                                                                    <div style={{
-                                                                        position: 'absolute',
-                                                                        top: 8,
-                                                                        left: 8,
-                                                                        backgroundColor: 'rgba(0,0,0,0.7)',
-                                                                        color: 'white',
-                                                                        padding: '4px 8px',
-                                                                        borderRadius: '4px',
-                                                                        fontSize: '10px'
-                                                                    }}>
-                                                                        LIVE
-                                                                    </div>
+                                                                    LIVE
                                                                 </div>
-                                                                <div style={{ marginTop: '12px' }}>
-                                                                    <Button 
-                                                                        type="primary"
-                                                                        size="small"
-                                                                        icon={<PictureOutlined />}
-                                                                        onClick={() => selectedImage && sendReferenceImage(selectedImage)}
-                                                                        disabled={!selectedImage || autonomousMode}
-                                                                        style={{ marginRight: '8px' }}
-                                                                    >
-                                                                        Set Reference
-                                                                    </Button>
-                                                                    <Button 
-                                                                        type={autonomousMode ? "default" : "primary"}
-                                                                        danger={autonomousMode}
-                                                                        size="small"
-                                                                        icon={autonomousMode ? <StopOutlined /> : <PlayCircleOutlined />}
-                                                                        onClick={autonomousMode ? stopVideoStream : startVideoStream}
-                                                                        disabled={!camIP}
-                                                                        style={{ marginRight: '8px' }}
-                                                                    >
-                                                                        {autonomousMode ? 'Stop Stream' : 'Start Stream'}
-                                                                    </Button>
-                                                                    {selectedImage && (
-                                                                        <Text 
-                                                                            type="success" 
-                                                                            style={{ fontSize: '12px' }}
-                                                                        >
-                                                                            ✓ Ready
-                                                                        </Text>
-                                                                    )}
-                                                                </div>
-                                                            </>
-                                                        ) : (
-                                                            <div style={{ textAlign: 'center', padding: '20px' }}>
-                                                                <div style={{
-                                                                    width: '150px',
-                                                                    height: '120px',
-                                                                    backgroundColor: '#f5f5f5',
-                                                                    border: '2px dashed #d9d9d9',
-                                                                    borderRadius: '8px',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    margin: '0 auto 16px'
-                                                                }}>
-                                                                    <Text type="secondary">Camera Loading...</Text>
-                                                                </div>
-                                                                <Button 
-                                                                    type="primary" 
-                                                                    size="small"
-                                                                    onClick={() => sendCommand('GET_CAM_IP')}
-                                                                    loading={!socketReady}
-                                                                >
-                                                                    Refresh Camera
-                                                                </Button>
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                </Col>
-                                            </>
-                                            }
+                                                            }
+
+                                                            {/* Auto-Alignment Controls */}
+                                                            <div style={{ marginBottom: '12px' }}>
+                                                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                                                    <div style={{
+                                                                        padding: '8px',
+                                                                        backgroundColor: alignmentStatus === 'idle' ? '#f5f5f5' : 
+                                                                                        alignmentStatus === 'searching' ? '#fff7e6' :
+                                                                                        alignmentStatus === 'centering' ? '#e6f7ff' : '#f6ffed',
+                                                                        border: `1px solid ${alignmentStatus === 'idle' ? '#d9d9d9' : 
+                                                                                                alignmentStatus === 'searching' ? '#ffd591' :
+                                                                                                alignmentStatus === 'centering' ? '#91d5ff' : '#b7eb8f'}`,
+                                                                        borderRadius: '6px'
+                                                                    }}>
+                                                                        <Text strong style={{ fontSize: '12px' }}>
+                                                                            Auto-Align: {alignmentStatus.toUpperCase()}
+                                                                        </Text>
+                                                                        {(targetFound || true) && (
+                                                                            <div style={{ marginTop: '4px' }}>
+                                                                                <Text style={{ fontSize: '10px', color: '#52c41a' }}>
+                                                                                    Target: ✓ | Matches: {numMatches} | Quality: {(matchQuality * 100).toFixed(0)}%
+                                                                                </Text>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    
+                                                                    {!isAutoAligning ? (
+                                                                        <Button
+                                                                            type="primary"
+                                                                            size="small"
+                                                                            onClick={startAutoAlignment}
+                                                                            disabled={!socketReady || !autonomousMode}
+                                                                            style={{ 
+                                                                                width: '100%',
+                                                                                backgroundColor: '#722ed1',
+                                                                                borderColor: '#722ed1'
+                                                                            }}
+                                                                        >
+                                                                            🎯 Auto-Align Camera
+                                                                        </Button>
+                                                                    ) : (
+                                                                        <Button
+                                                                            danger
+                                                                            size="small"
+                                                                            onClick={stopAutoAlignment}
+                                                                            style={{ width: '100%' }}
+                                                                        >
+                                                                            🛑 Stop Auto-Align
+                                                                        </Button>
+                                                                    )}
+                                                                </Space>
+                                                            </div>
+
+                                                            <div style={{ marginTop: '12px' }}>
+                                                                <Button 
+                                                                    type="primary"
+                                                                    size="small"
+                                                                    icon={<PictureOutlined />}
+                                                                    onClick={() => selectedImage && sendReferenceImage(selectedImage)}
+                                                                    disabled={!selectedImage || autonomousMode}
+                                                                    style={{ marginRight: '8px' }}
+                                                                >
+                                                                    Set Reference
+                                                                </Button>
+                                                                <Button 
+                                                                    type={autonomousMode ? "default" : "primary"}
+                                                                    danger={autonomousMode}
+                                                                    size="small"
+                                                                    icon={autonomousMode ? <StopOutlined /> : <PlayCircleOutlined />}
+                                                                    onClick={autonomousMode ? stopVideoStream : startVideoStream}
+                                                                    disabled={!camIP}
+                                                                    style={{ marginRight: '8px' }}
+                                                                >
+                                                                    {autonomousMode ? 'Stop Stream' : 'Start Stream'}
+                                                                </Button>
+                                                                {selectedImage && (
+                                                                    <Text 
+                                                                        type="success" 
+                                                                        style={{ fontSize: '12px' }}
+                                                                    >
+                                                                        ✓ Ready
+                                                                    </Text>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div style={{ textAlign: 'center', padding: '20px' }}>
+                                                            <div style={{
+                                                                width: '150px',
+                                                                height: '120px',
+                                                                backgroundColor: '#f5f5f5',
+                                                                border: '2px dashed #d9d9d9',
+                                                                borderRadius: '8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                margin: '0 auto 16px'
+                                                            }}>
+                                                                <Text type="secondary">Camera Loading...</Text>
+                                                            </div>
+                                                            <Button 
+                                                                type="primary" 
+                                                                size="small"
+                                                                onClick={() => sendCommand('GET_CAM_IP')}
+                                                                loading={!socketReady}
+                                                            >
+                                                                Refresh Camera
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </Col>
                                         </Row>
                                     </Card>
                                 </Col>
 
-                                <Col span={24}>
+                                <Col xs={24} lg={10}>
                                     <Card 
-                                        title={
-                                            <Space>
-                                                <AimOutlined />
-                                                <span>Navigation Control</span>
-                                                {autonomousMode && <Text type="success">(ACTIVE)</Text>}
-                                            </Space>
-                                        }
-                                        extra={
-                                            autonomousMode && (
-                                                <div style={{ display: 'flex', alignItems: 'center' }}>
-                                                    <div style={{ 
-                                                        width: '8px', 
-                                                        height: '8px', 
-                                                        backgroundColor: '#52c41a', 
-                                                        borderRadius: '50%', 
-                                                        marginRight: '8px',
-                                                        animation: 'pulse 1.5s infinite'
-                                                    }} />
-                                                    <Text type="success">Navigating</Text>
-                                                </div>
-                                            )
-                                        }
+                                        title={<><EnvironmentOutlined /> Temperature Data Collection</>} 
+                                        style={{ height: '100%' }}
                                     >
-                                        {/* Target Coordinates Input */}
-                                        <div style={{ marginBottom: '24px' }}>
-                                            <Text strong style={{ fontSize: '16px', marginBottom: '12px', display: 'block' }}>
-                                                🎯 Target Destination
-                                            </Text>
-                                            <Row gutter={[12, 12]}>
-                                                <Col xs={24} md={12}>
-                                                    <Text type="secondary">Latitude</Text>
-                                                    <Input
-                                                        size="large"
-                                                        type="number"
-                                                        step="0.000001"
-                                                        value={targetCoords.lat}
-                                                        onChange={(e) => setTargetCoords(prev => ({ ...prev, lat: e.target.value }))}
-                                                        placeholder="Enter latitude (e.g., 6.9271)"
-                                                        disabled={autonomousMode}
-                                                        style={{ marginTop: '4px' }}
-                                                    />
-                                                </Col>
-                                                <Col xs={24} md={12}>
-                                                    <Text type="secondary">Longitude</Text>
-                                                    <Input
-                                                        size="large"
-                                                        type="number"
-                                                        step="0.000001"
-                                                        value={targetCoords.lng}
-                                                        onChange={(e) => setTargetCoords(prev => ({ ...prev, lng: e.target.value }))}
-                                                        placeholder="Enter longitude (e.g., 79.9612)"
-                                                        disabled={autonomousMode}
-                                                        style={{ marginTop: '4px' }}
-                                                    />
-                                                </Col>
-                                            </Row>
-                                        </div>
-
-                                        {/* Action Buttons */}
-                                        <Row gutter={[12, 12]}>
-                                            <Col xs={24} sm={8}>
+                                        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                                            <div style={{ textAlign: 'center' }}>
                                                 <Button
-                                                    type={autonomousMode ? "default" : "primary"}
-                                                    danger={autonomousMode}
+                                                    type="primary"
                                                     size="large"
-                                                    icon={autonomousMode ? <StopOutlined /> : <PlayCircleOutlined />}
-                                                    onClick={async () => {
-                                                        if (autonomousMode) {
-                                                            sendCommand('STOP_AUTO');
-                                                            // Also stop the video stream
-                                                            await stopVideoStream();
-                                                        } else if (targetCoords.lat && targetCoords.lng) {
-                                                            // Send reference image to backend if one is selected
-                                                            if (selectedImage) {
-                                                                const success = await sendReferenceImage(selectedImage);
-                                                                if (!success) {
-                                                                    message.warning('Failed to send reference image, but continuing with navigation');
-                                                                }
-                                                            }
-                                                            sendCommand(`SET_TARGET:${targetCoords.lat},${targetCoords.lng}`);
-                                                        } else {
-                                                            message.warning('Please enter target coordinates');
-                                                        }
-                                                    }}
-                                                    disabled={!autonomousMode && (!targetCoords.lat || !targetCoords.lng)}
-                                                    loading={isNavigating && !autonomousMode}
-                                                    style={{ width: '100%', height: '50px' }}
-                                                >
-                                                    {autonomousMode ? 'Stop Navigation' : (
-                                                        selectedImage ? 'Start Navigation + Set Reference' : 'Start Navigation'
-                                                    )}
-                                                </Button>
-                                            </Col>
-                                            <Col xs={24} sm={8}>
-                                                <Button
-                                                    size="large"
-                                                    icon={<EnvironmentOutlined />}
+                                                    loading={isCollecting}
                                                     onClick={() => {
-                                                        setTargetCoords({
-                                                            lat: gpsData.latitude.toFixed(6),
-                                                            lng: gpsData.longitude.toFixed(6)
-                                                        });
-                                                        message.success('Current location set as target');
+                                                        setIsCollecting(true);
+                                                        sendCommand('get_temp');
+                                                        setTemperature([]);
                                                     }}
-                                                    disabled={autonomousMode}
-                                                    style={{ width: '100%', height: '50px' }}
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        height: '60px', 
+                                                        fontSize: '18px',
+                                                        backgroundColor: '#fa8c16',
+                                                        borderColor: '#fa8c16'
+                                                    }}
                                                 >
-                                                    Use Current Location
+                                                    {isCollecting ? 'Collecting...' : 'Collect Temperature'}
                                                 </Button>
-                                            </Col>
-                                            <Col xs={24} sm={8}>
-                                                {selectedImage?.coordinates ? (
-                                                    <Button
-                                                        size="large"
-                                                        icon={<PictureOutlined />}
-                                                        onClick={() => {
-                                                            setTargetCoords({
-                                                                lat: selectedImage.coordinates.lat.toString(),
-                                                                lng: selectedImage.coordinates.lng.toString()
-                                                            });
-                                                            message.success('Image coordinates set as target');
-                                                        }}
-                                                        disabled={autonomousMode}
-                                                        style={{ width: '100%', height: '50px', backgroundColor: '#52c41a', borderColor: '#52c41a', color: 'white' }}
-                                                    >
-                                                        Use Image Target
-                                                    </Button>
-                                                ) : (
-                                                    <Button
-                                                        size="large"
-                                                        icon={<AimOutlined />}
-                                                        onClick={() => sendCommand('GET_TARGET')}
-                                                        style={{ width: '100%', height: '50px' }}
-                                                    >
-                                                        Get Target Info
-                                                    </Button>
-                                                )}
-                                            </Col>
-                                        </Row>
-
-                                        {/* Navigation Progress */}
-                                        {autonomousMode && navigationData.distance > 0 && (
-                                            <div style={{ marginTop: '24px' }}>
-                                                <Divider>Navigation Progress</Divider>
-                                                <Row gutter={[16, 16]}>
-                                                    <Col xs={24} sm={12}>
-                                                        <Card size="small" style={{ backgroundColor: '#f6ffed' }}>
-                                                            <Statistic
-                                                                title="Distance to Target"
-                                                                value={navigationData.distance}
-                                                                precision={1}
-                                                                suffix="m"
-                                                                valueStyle={{ color: '#52c41a', fontSize: '24px' }}
-                                                            />
-                                                        </Card>
-                                                    </Col>
-                                                    <Col xs={24} sm={12}>
-                                                        <Card size="small" style={{ backgroundColor: '#fff7e6' }}>
-                                                            <Statistic
-                                                                title="Heading Error"
-                                                                value={Math.abs(navigationData.headingError)}
-                                                                precision={1}
-                                                                suffix="°"
-                                                                valueStyle={{ 
-                                                                    color: Math.abs(navigationData.headingError) < 5 ? '#52c41a' : '#faad14',
-                                                                    fontSize: '24px'
-                                                                }}
-                                                            />
-                                                        </Card>
-                                                    </Col>
-                                                </Row>
-                                                
-                                                <div style={{ marginTop: '16px' }}>
-                                                    <Text type="secondary">Navigation Accuracy</Text>
-                                                    <Progress
-                                                        percent={Math.max(0, 100 - Math.abs(navigationData.headingError) * 2)}
-                                                        status={Math.abs(navigationData.headingError) < 5 ? 'success' : 'active'}
-                                                        strokeColor={{
-                                                            '0%': '#108ee9',
-                                                            '100%': '#87d068',
-                                                        }}
-                                                        style={{ marginTop: '8px' }}
-                                                    />
-                                                </div>
                                             </div>
-                                        )}
+                                            
+                                            <div>
+                                                {Array.isArray(temperature) && temperature.length > 0 ? (
+                                                    <Card size="small" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                                                        <div style={{ textAlign: 'center' }}>
+                                                            <div style={{ fontSize: '48px', fontWeight: 'bold', color: '#52c41a', marginBottom: '8px' }}>
+                                                                {(temperature.reduce((x, y) => x + y, 0) / temperature.length)?.toFixed(2)}°C
+                                                            </div>
+                                                            <div>
+                                                                <Text strong style={{ fontSize: '16px' }}>Latest Temperature Reading</Text><br />
+                                                                <Text type="secondary">Based on {temperature.length} data points</Text>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                ) : (
+                                                    <div style={{ 
+                                                        padding: '40px 20px', 
+                                                        textAlign: 'center', 
+                                                        backgroundColor: '#fafafa', 
+                                                        borderRadius: '8px',
+                                                        border: '2px dashed #d9d9d9'
+                                                    }}>
+                                                        <Text type="secondary" style={{ fontSize: '16px' }}>No temperature data collected yet</Text>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Space>
                                     </Card>
                                 </Col>
                             </Row>

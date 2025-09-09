@@ -17,6 +17,15 @@ import {
 import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../../../firebase";
 
+// API Configuration
+const API_CONFIG = {
+  BASE_URL: process.env.REACT_APP_API_BASE_URL || "http://localhost:5000",
+  ENDPOINTS: {
+    ANALYZE: "/analyze",
+    CALCULATE_AREA: "/calculate_area",
+  },
+};
+
 const Segment = () => {
   const [currentStep, setCurrentStep] = useState("upload"); // 'upload', 'processing', 'results'
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -26,6 +35,7 @@ const Segment = () => {
   const [calculatedAreas, setCalculatedAreas] = useState({});
   const [visibleMasks, setVisibleMasks] = useState({});
   const [calculating, setCalculating] = useState({});
+  const [progress, setProgress] = useState(0);
 
   const COLOR_PALETTE = [
     "#FF6B6B",
@@ -39,6 +49,9 @@ const Segment = () => {
     "#BB8FCE",
     "#85C1E9",
   ];
+
+  // Backend API base URL - update this to your actual backend URL
+  const API_BASE_URL = API_CONFIG.BASE_URL;
 
   const startAnalysis = async () => {
     setCurrentStep("processing");
@@ -58,6 +71,7 @@ const Segment = () => {
 
       console.log("Session ID:", sessionId);
       setProcessingStatus("Fetching images from session...");
+      setProgress(10);
 
       // Get the latest image from the session
       const imagesQuery = query(
@@ -101,47 +115,82 @@ const Segment = () => {
 
       console.log("Setting uploaded image:", imageFromFirestore);
       setUploadedImage(imageFromFirestore);
+      setProgress(25);
 
-      // Mock processing steps
-      const steps = [
-        { message: "1/4: Processing image from session...", delay: 1000 },
-        { message: "2/4: Detecting objects...", delay: 1500 },
-        { message: "3/4: Segmenting material surfaces...", delay: 2000 },
-        { message: "4/4: Finalizing analysis...", delay: 1000 },
-      ];
+      // Call backend API for analysis
+      setProcessingStatus("1/4: Sending image to backend for analysis...");
 
-      // ✅ Process steps sequentially — intentionally awaiting in loop
-      for (let index = 0; index < steps.length; index += 1) {
-        // ← fixes no-plusplus
-        const step = steps[index];
-        setProcessingStatus(step.message);
+      // Download the image as blob for form data
+      const imageResponse = await fetch(latestImageData.imageUrl);
+      const imageBlob = await imageResponse.blob();
 
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => {
-          // ← fixes no-promise-executor-return (no return statement)
-          setTimeout(resolve, step.delay);
-        });
+      // Create FormData for backend API
+      const formData = new FormData();
+      formData.append("image", imageBlob, imageFromFirestore.name);
+
+      setProcessingStatus("2/4: Analyzing image with AI model...");
+      setProgress(50);
+
+      // Call backend analyze endpoint
+      const analyzeResponse = await fetch(
+        `${API_BASE_URL}${API_CONFIG.ENDPOINTS.ANALYZE}`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!analyzeResponse.ok) {
+        throw new Error(
+          `Backend analysis failed: ${analyzeResponse.statusText}`
+        );
       }
 
-      // Mock analysis results
-      const mockResults = {
-        detected_classes: ["building", "road", "sky", "vegetation"],
-        masks: [
-          { material: "Glass", color: COLOR_PALETTE[0], mask_base64: "..." },
-          { material: "Brick", color: COLOR_PALETTE[1], mask_base64: "..." },
-          { material: "Concrete", color: COLOR_PALETTE[2], mask_base64: "..." },
-          { material: "Metal", color: COLOR_PALETTE[3], mask_base64: "..." },
-          { material: "Wood", color: COLOR_PALETTE[4], mask_base64: "..." },
-        ],
+      const analysisData = await analyzeResponse.json();
+      console.log("Analysis response:", analysisData);
+
+      setProcessingStatus("3/4: Processing segmentation results...");
+      setProgress(75);
+
+      // Transform backend response to frontend format
+      const transformedResults = {
+        detected_classes: analysisData.result.detected_classes.map(
+          (cls) => cls.name
+        ),
+        masks: [],
       };
 
-      setAnalysisResults(mockResults);
+      // Process masks from backend response
+      let colorIndex = 0;
+      Object.entries(analysisData.result.masks).forEach(
+        ([className, materials]) => {
+          Object.entries(materials).forEach(([materialName, materialData]) => {
+            transformedResults.masks.push({
+              material: `${className} - ${materialName}`,
+              color: COLOR_PALETTE[colorIndex % COLOR_PALETTE.length],
+              mask_base64: materialData.mask,
+              className,
+              materialType: materialName,
+            });
+            colorIndex += 1;
+          });
+        }
+      );
+
+      setProcessingStatus("4/4: Finalizing analysis...");
+      setProgress(90);
+
+      // Small delay for UI smoothness
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1000);
+      });
+
+      setProgress(100);
+      setAnalysisResults(transformedResults);
       setCurrentStep("results");
     } catch (error) {
       console.error("Error loading image from session:", error);
-      setProcessingStatus(
-        `❌ Failed to load image from session: ${error.message}`
-      );
+      setProcessingStatus(`❌ Failed to analyze image: ${error.message}`);
       setTimeout(() => setCurrentStep("upload"), 3000);
     }
   };
@@ -156,13 +205,57 @@ const Segment = () => {
 
     setCalculating((prev) => ({ ...prev, [material]: true }));
 
-    await new Promise((resolve) => {
-      setTimeout(resolve, 1000);
-    });
+    try {
+      // Find the material mask data
+      const materialData = analysisResults.masks.find(
+        (mask) => mask.material === material
+      );
 
-    const mockArea = (Math.random() * 100 + 10).toFixed(1);
-    setCalculatedAreas((prev) => ({ ...prev, [material]: mockArea }));
-    setCalculating((prev) => ({ ...prev, [material]: false }));
+      if (!materialData) {
+        throw new Error("Material mask not found");
+      }
+
+      // Prepare the request body for calculate_area endpoint
+      const requestBody = {
+        image_filename: uploadedImage.name,
+        mask_base64: materialData.mask_base64,
+        real_distance: parseFloat(calibrationDistance),
+      };
+
+      console.log("Calculating area for:", material, requestBody);
+
+      // Call backend calculate_area endpoint
+      const response = await fetch(
+        `${API_BASE_URL}${API_CONFIG.ENDPOINTS.CALCULATE_AREA}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Area calculation failed: ${response.statusText}`);
+      }
+
+      const areaData = await response.json();
+      console.log("Area calculation response:", areaData);
+
+      // Update calculated areas with the result
+      setCalculatedAreas((prev) => ({
+        ...prev,
+        [material]: areaData.surface_area.toFixed(1),
+      }));
+    } catch (error) {
+      console.error("Error calculating area:", error);
+      setProcessingStatus(
+        `❌ Failed to calculate area for ${material}: ${error.message}`
+      );
+    } finally {
+      setCalculating((prev) => ({ ...prev, [material]: false }));
+    }
   };
 
   const toggleMaskVisibility = (material) => {
@@ -170,6 +263,17 @@ const Segment = () => {
       ...prev,
       [material]: !prev[material],
     }));
+  };
+
+  // Helper function to create mask overlay URL from base64
+  const createMaskOverlay = (maskBase64) => {
+    try {
+      // Create a data URL for the mask image
+      return `data:image/png;base64,${maskBase64}`;
+    } catch (error) {
+      console.error("Error creating mask overlay:", error);
+      return null;
+    }
   };
 
   // STEP 1: UPLOAD / INITIAL SCREEN
@@ -236,7 +340,7 @@ const Segment = () => {
             message={
               <div className="d-flex align-items-center">
                 <InfoCircleOutlined className="me-2" />
-                Latest image will be automatically loaded from current session
+                Latest image will be automatically loaded and analyzed using AI
               </div>
             }
             type="info"
@@ -281,7 +385,7 @@ const Segment = () => {
             />
           )}
 
-          <Progress percent={60} status="active" showInfo={false} />
+          <Progress percent={progress} status="active" showInfo={false} />
         </Card>
       </div>
     );
@@ -463,12 +567,31 @@ const Segment = () => {
                       key={item.material}
                       className="position-absolute top-0 start-0 w-100 h-100"
                       style={{
-                        backgroundColor: item.color,
-                        opacity: 0.3,
-                        mixBlendMode: "multiply",
                         pointerEvents: "none",
                       }}
                     >
+                      {item.mask_base64 && item.mask_base64 !== "..." ? (
+                        <img
+                          src={createMaskOverlay(item.mask_base64)}
+                          alt={`${item.material} mask`}
+                          className="w-100 h-100"
+                          style={{
+                            objectFit: "cover",
+                            opacity: 0.6,
+                            mixBlendMode: "multiply",
+                            filter: `hue-rotate(${item.color})`,
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="w-100 h-100"
+                          style={{
+                            backgroundColor: item.color,
+                            opacity: 0.3,
+                            mixBlendMode: "multiply",
+                          }}
+                        />
+                      )}
                       <div className="position-absolute top-0 start-0 m-2 bg-dark text-white px-2 py-1 rounded small">
                         {item.material}
                       </div>

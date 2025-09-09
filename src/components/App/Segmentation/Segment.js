@@ -1,3 +1,4 @@
+// src/components/Segment.js (or wherever you have it)
 import React, { useState } from "react";
 import { Button, Card, Input, Alert, Progress, Tag, Row, Col } from "antd";
 import {
@@ -11,6 +12,10 @@ import {
   PictureOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
+
+// Import Firebase
+import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { db } from "../../../firebase";
 
 const Segment = () => {
   const [currentStep, setCurrentStep] = useState("upload"); // 'upload', 'processing', 'results'
@@ -37,56 +42,109 @@ const Segment = () => {
 
   const startAnalysis = async () => {
     setCurrentStep("processing");
+    setProcessingStatus("Loading latest image from session...");
 
-    setProcessingStatus("Loading image from Firebase...");
-    await new Promise((resolve) => {
-      setTimeout(resolve, 1000);
-    });
+    try {
+      // Get the current session ID from localStorage
+      const sessionId = localStorage.getItem("heatscape_session_id");
 
-    const mockFirebaseImage = {
-      file: null,
-      url: "https://images.unsplash.com/photo-1448630360428-65456885c650?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2067&q=80",
-      name: "firebase_building_image.jpg",
-    };
+      if (!sessionId) {
+        setProcessingStatus(
+          "❌ No active session found. Please capture images first."
+        );
+        setTimeout(() => setCurrentStep("upload"), 3000);
+        return;
+      }
 
-    setUploadedImage(mockFirebaseImage);
+      console.log("Session ID:", sessionId);
+      setProcessingStatus("Fetching images from session...");
 
-    const steps = [
-      { message: "1/4: Processing Firebase image...", delay: 1000 },
-      { message: "2/4: Detecting objects...", delay: 1500 },
-      { message: "3/4: Segmenting material surfaces...", delay: 2000 },
-      { message: "4/4: Finalizing analysis...", delay: 1000 },
-    ];
-
-    const processSteps = async () => {
-      await Promise.all(
-        steps.map(
-          (step) =>
-            new Promise((resolve) => {
-              setProcessingStatus(step.message);
-              setTimeout(resolve, step.delay);
-            })
-        )
+      // Get the latest image from the session
+      const imagesQuery = query(
+        collection(db, "sessions", sessionId, "images"),
+        orderBy("timestamp", "desc"),
+        limit(1)
       );
-    };
 
-    await processSteps();
+      console.log("Querying images collection...");
+      const querySnapshot = await getDocs(imagesQuery);
 
-    const mockResults = {
-      detected_classes: ["building", "road", "sky", "vegetation"],
-      masks: [
-        { material: "Glass", color: COLOR_PALETTE[0], mask_base64: "..." },
-        { material: "Brick", color: COLOR_PALETTE[1], mask_base64: "..." },
-        { material: "Concrete", color: COLOR_PALETTE[2], mask_base64: "..." },
-        { material: "Metal", color: COLOR_PALETTE[3], mask_base64: "..." },
-        { material: "Wood", color: COLOR_PALETTE[4], mask_base64: "..." },
-      ],
-    };
+      console.log("Query snapshot size:", querySnapshot.size);
 
-    setAnalysisResults(mockResults);
-    setCurrentStep("results");
+      if (querySnapshot.empty) {
+        setProcessingStatus(
+          "❌ No images found in session. Please capture images first."
+        );
+        setTimeout(() => setCurrentStep("upload"), 3000);
+        return;
+      }
+
+      const latestImageDoc = querySnapshot.docs[0];
+      const latestImageData = latestImageDoc.data();
+
+      console.log("Latest image data:", latestImageData);
+
+      if (!latestImageData.imageUrl) {
+        setProcessingStatus(
+          "❌ Image URL not found. Please check image upload."
+        );
+        setTimeout(() => setCurrentStep("upload"), 3000);
+        return;
+      }
+
+      // Set image in state
+      const imageFromFirestore = {
+        url: latestImageData.imageUrl,
+        name: `image_${latestImageDoc.id}.jpg`,
+        id: latestImageDoc.id,
+      };
+
+      console.log("Setting uploaded image:", imageFromFirestore);
+      setUploadedImage(imageFromFirestore);
+
+      // Mock processing steps
+      const steps = [
+        { message: "1/4: Processing image from session...", delay: 1000 },
+        { message: "2/4: Detecting objects...", delay: 1500 },
+        { message: "3/4: Segmenting material surfaces...", delay: 2000 },
+        { message: "4/4: Finalizing analysis...", delay: 1000 },
+      ];
+
+      // ✅ Process steps sequentially — intentionally awaiting in loop
+      for (let index = 0; index < steps.length; index += 1) {
+        // ← fixes no-plusplus
+        const step = steps[index];
+        setProcessingStatus(step.message);
+
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => {
+          // ← fixes no-promise-executor-return (no return statement)
+          setTimeout(resolve, step.delay);
+        });
+      }
+
+      // Mock analysis results
+      const mockResults = {
+        detected_classes: ["building", "road", "sky", "vegetation"],
+        masks: [
+          { material: "Glass", color: COLOR_PALETTE[0], mask_base64: "..." },
+          { material: "Brick", color: COLOR_PALETTE[1], mask_base64: "..." },
+          { material: "Concrete", color: COLOR_PALETTE[2], mask_base64: "..." },
+          { material: "Metal", color: COLOR_PALETTE[3], mask_base64: "..." },
+          { material: "Wood", color: COLOR_PALETTE[4], mask_base64: "..." },
+        ],
+      };
+
+      setAnalysisResults(mockResults);
+      setCurrentStep("results");
+    } catch (error) {
+      console.error("Error loading image from session:", error);
+      setProcessingStatus(
+        `❌ Failed to load image from session: ${error.message}`
+      );
+      setTimeout(() => setCurrentStep("upload"), 3000);
+    }
   };
-
   const calculateArea = async (material) => {
     if (
       !calibrationDistance ||
@@ -113,16 +171,6 @@ const Segment = () => {
       [material]: !prev[material],
     }));
   };
-
-  // const resetAnalysis = () => {
-  //   setCurrentStep("upload");
-  //   setUploadedImage(null);
-  //   setAnalysisResults(null);
-  //   setCalculatedAreas({});
-  //   setVisibleMasks({});
-  //   setCalibrationDistance("");
-  //   setProcessingStatus("");
-  // };
 
   // STEP 1: UPLOAD / INITIAL SCREEN
   if (currentStep === "upload") {
@@ -188,7 +236,7 @@ const Segment = () => {
             message={
               <div className="d-flex align-items-center">
                 <InfoCircleOutlined className="me-2" />
-                Image will be automatically loaded from Firebase storage
+                Latest image will be automatically loaded from current session
               </div>
             }
             type="info"
@@ -205,7 +253,7 @@ const Segment = () => {
     return (
       <div className="container py-5 d-flex justify-content-center">
         <Card style={{ width: "100%", maxWidth: "600px" }}>
-          <h3 className="text-center mb-4">Analyzing Firebase Image</h3>
+          <h3 className="text-center mb-4">Analyzing Session Image</h3>
 
           {uploadedImage?.url && (
             <img
@@ -224,6 +272,15 @@ const Segment = () => {
             <p className="mt-3 fw-medium">{processingStatus}</p>
           </div>
 
+          {processingStatus.includes("Failed") && (
+            <Alert
+              message={processingStatus}
+              type="error"
+              className="mt-3"
+              closable
+            />
+          )}
+
           <Progress percent={60} status="active" showInfo={false} />
         </Card>
       </div>
@@ -234,9 +291,7 @@ const Segment = () => {
   return (
     <div className="container py-4">
       {/* Header */}
-      <Card className="mb-4 flex  align-items-center flex-wrap w-100%"
-      
-      >
+      <Card className="mb-4 d-flex align-items-center flex-wrap">
         <div className="flex-grow-1">
           <h3 className="mb-1">Analysis Complete</h3>
           <p className="text-muted mb-0">

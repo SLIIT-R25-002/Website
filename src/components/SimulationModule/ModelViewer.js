@@ -18,10 +18,16 @@ function ModelViewer() {
     const gisGroupRef = useRef(new THREE.Group());
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [showSimModal, setShowSimModal] = useState(false);
+
     // 🌍 User Inputs
     const [lat, setLat] = useState(6.9271);
     const [lon, setLon] = useState(79.8612);
-    const [dateTime, setDateTime] = useState('2025-08-05T15:00');
+    const [dateTime, setDateTime] = useState(() => {
+        const now = new Date();
+        now.setMinutes(0, 0, 0);
+        return now.toISOString().slice(0, 16);
+    });
     const [temperature, setTemperature] = useState(35);
     const [humidity, setHumidity] = useState(64);
     const [simulationStatus, setSimulationStatus] = useState(false);
@@ -284,7 +290,7 @@ function ModelViewer() {
     };
 
     // --- Generate CSV ---
-    const generateCSV = (localWindSpeedKmph) => {
+    const generateCSV = (localWindSpeedKmph, weatherTemperature, weatherHumidity) => {
         const model = buildingGroupRef.current;
         const csvData = [
             [
@@ -333,8 +339,8 @@ function ModelViewer() {
                     userData.Material_type || 'Unknown',
                     windSpeedMps,
                     userData.Sun_Exposure.toFixed(1),
-                    temperature,
-                    humidity
+                    weatherTemperature,
+                    weatherHumidity
                 ]);
             }
         });
@@ -350,7 +356,7 @@ function ModelViewer() {
     };
 
     // --- START SIMULATION ---
-    const startSimulation = async () => {
+    const startManualSimulation = async () => {
         const model = buildingGroupRef.current;
         if (model.children.length === 0) {
             console.warn("Please upload a building model first.");
@@ -412,9 +418,81 @@ function ModelViewer() {
             }
         });
 
-        generateCSV(windKmph);
+        generateCSV(windKmph, temperature, humidity);
     };
 
+    const startDynamicSimulation = async () => {
+        const model = buildingGroupRef.current;
+        if (model.children.length === 0) {
+            console.warn("Please upload a building model first.");
+            return;
+        }
+
+        const date = dateTime.split('T')[0];
+        const hour = parseInt(dateTime.split('T')[1].split(':')[0], 10);
+
+        let windKmph = 10;
+        let wTemperature = 20;
+        let wHumidity = 20;
+        try {
+            const res = await fetch(
+                `http://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
+            );
+            const data = await res.json();
+            const hourData = data.forecast.forecastday[0].hour.find(h =>
+                new Date(h.time).getHours() === hour
+            );
+            if (hourData) {
+                await setTemperature(hourData.temp_c);
+                await setHumidity(hourData.humidity)
+                wTemperature = hourData.temp_c;
+                wHumidity = hourData.humidity;
+                windKmph = hourData.wind_kph;
+            }
+        } catch (err) {
+            console.warn("Weather API failed, using default wind speed", err);
+        }
+
+        setWindSpeedKmph(windKmph);
+
+        const sunLight = scene.children.find(c => c.isDirectionalLight);
+        if (!sunLight) return;
+
+        const sunDirection = new THREE.Vector3();
+        sunLight.getWorldDirection(sunDirection).normalize();
+        const raycaster = new THREE.Raycaster();
+
+        resetHeatmap();
+
+        model.traverse((node) => {
+            if (node.isMesh && node.geometry) {
+                const { position } = node.geometry.attributes; // ✅ Fixed: destructuring
+                if (!position) return;
+
+                const worldMatrix = node.matrixWorld;
+                let totalVertices = 0;
+                let exposedVertices = 0;
+
+                for (let i = 0; i < position.count; i += 1) { // ✅ Fixed: i += 1
+                    const vertex = new THREE.Vector3().fromBufferAttribute(position, i);
+                    vertex.applyMatrix4(worldMatrix);
+                    totalVertices += 1;
+
+                    raycaster.set(vertex, sunDirection);
+                    const intersects = raycaster.intersectObjects(scene.children, true);
+                    if (intersects.length === 0 || intersects[0].object === node) {
+                        exposedVertices += 1;
+                    }
+                }
+
+                const exposure = totalVertices > 0 ? (exposedVertices / totalVertices) * 100 : 0;
+                node.userData.Sun_Exposure = exposure;
+                node.userData.exposurePercent = exposure;
+            }
+        });
+
+        generateCSV(windKmph, wTemperature, wHumidity);
+    };
     // --- Transform Control ---
     const attachTransformControl = (object) => {
         if (!scene || !camera || !renderer || !object) return;
@@ -695,6 +773,14 @@ function ModelViewer() {
                     border: '1px solid #e0e0e0'
                 }}
             >
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '15px' }}>
+                <button type="button" onClick={() => transformControlRef.current?.setMode('translate')} style={toggleButton(transformControlRef.current?.mode === 'translate')}>
+                    📦 Move
+                </button>
+                <button type="button" onClick={() => transformControlRef.current?.setMode('rotate')} style={toggleButton(transformControlRef.current?.mode === 'rotate')}>
+                    🔄 Rotate
+                </button>
+                </div>
                 <h2 style={{
                     textAlign: 'center',
                     color: '#1a1a1a',
@@ -708,7 +794,6 @@ function ModelViewer() {
                 }}>
                     🌍 Urban Heat Island Simulation
                 </h2>
-
                 <div style={{ display: 'grid', gap: '16px', marginBottom: '24px' }}>
                     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                         <div style={inputGroupStyle}>
@@ -837,8 +922,88 @@ function ModelViewer() {
                     </div>
                 )}
 
+                {/* Simulation Mode Selection Modal */}
+                {showSimModal && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 2000
+                    }}>
+                        <div style={{
+                            background: 'white',
+                            borderRadius: '16px',
+                            padding: '32px',
+                            width: '90%',
+                            maxWidth: '500px',
+                            textAlign: 'center',
+                            boxShadow: '0 15px 40px rgba(0,0,0,0.2)'
+                        }}>
+                            <h3 style={{ marginBottom: '16px', color: '#1a1a1a' }}>Choose Simulation Mode</h3>
+                            <p style={{ color: '#555', marginBottom: '24px' }}>
+                                Select how you'd like to run the thermal simulation.
+                            </p>
+
+                            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowSimModal(false);
+                                        startManualSimulation();
+                                    }}
+                                    style={{
+                                        ...primaryButton,
+                                        background: 'linear-gradient(90deg, #007bff, #0056b3)',
+                                        padding: '12px 20px',
+                                        fontSize: '16px'
+                                    }}
+                                >
+                                    🛠️ Manual
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowSimModal(false);
+                                        startDynamicSimulation();
+                                    }}
+                                    style={{
+                                        ...primaryButton,
+                                        background: 'linear-gradient(90deg, #28a745, #1e7e34)',
+                                        padding: '12px 20px',
+                                        fontSize: '16px'
+                                    }}
+                                >
+                                    🌐 Dynamic
+                                </button>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowSimModal(false)}
+                                style={{
+                                    marginTop: '24px',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#6c757d',
+                                    cursor: 'pointer',
+                                    fontSize: '14px'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '20px' }}>
-                    <button type="button" onClick={startSimulation} style={primaryButton}>
+                    <button type="button" onClick={() => setShowSimModal(true)} style={primaryButton}>
                         ▶️ Start Simulation
                     </button>
                     <button type="button" onClick={toggleHeatmap} style={toggleButton(isHeatmapVisible)}>

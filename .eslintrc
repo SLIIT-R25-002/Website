@@ -44,6 +44,7 @@
     "import/no-unresolved": "off",
     "react/no-array-index-key": "warn",
     "react/jsx-no-useless-fragment": "off",
+    "no-nested-ternary": "off",
     "react/jsx-filename-extension": [
       1,
       {

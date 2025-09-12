@@ -25,6 +25,7 @@ import {
   CompassOutlined,
   AimOutlined,
   DeleteOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import {
   collection,
@@ -35,6 +36,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import SessionsList from "./SessionsList";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -64,6 +66,7 @@ const CaptureImages = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [gyroModalVisible, setGyroModalVisible] = useState(false);
   const [gpsModalVisible, setGpsModalVisible] = useState(false);
+  const [showSessionsList, setShowSessionsList] = useState(false);
 
   const qrCodeValue = sessionId ? `heatscape://join/${sessionId}` : "";
 
@@ -135,6 +138,21 @@ const CaptureImages = () => {
     setSessionId(null);
     setImages([]);
     setErrorTxt(null);
+    setShowSessionsList(false);
+  };
+
+  const handleShowSessionsList = () => {
+    setShowSessionsList(true);
+  };
+
+  const handleBackFromSessionsList = () => {
+    setShowSessionsList(false);
+  };
+
+  const handleViewSessionFromList = (sessionIdFromList) => {
+    setSessionId(sessionIdFromList);
+    localStorage.setItem("heatscape_session_id", sessionIdFromList);
+    setShowSessionsList(false);
   };
 
   // Load session from localStorage on component mount
@@ -222,6 +240,16 @@ const CaptureImages = () => {
     };
   }, [sessionId]);
 
+  // Show sessions list if requested
+  if (showSessionsList) {
+    return (
+      <SessionsList
+        onBack={handleBackFromSessionsList}
+        onViewSession={handleViewSessionFromList}
+      />
+    );
+  }
+
   return (
     <Space
       direction="vertical"
@@ -262,6 +290,14 @@ const CaptureImages = () => {
             >
               Create New Session
             </Button>
+
+            <Button
+              size="large"
+              onClick={handleShowSessionsList}
+              icon={<UnorderedListOutlined />}
+            >
+              View All Sessions
+            </Button>
           </Space>
         </Card>
       ) : (
@@ -299,6 +335,12 @@ const CaptureImages = () => {
                         icon={<ReloadOutlined />}
                       >
                         New Session
+                      </Button>
+                      <Button
+                        onClick={handleShowSessionsList}
+                        icon={<UnorderedListOutlined />}
+                      >
+                        All Sessions
                       </Button>
                     </Space>
                   </Space>
@@ -384,13 +426,22 @@ const CaptureImages = () => {
                 </Col>
 
                 <Col xs={24} sm={8} style={{ textAlign: "right" }}>
-                  <Button
-                    onClick={handleNewSession}
-                    icon={<ReloadOutlined />}
-                    size="small"
-                  >
-                    New Session
-                  </Button>
+                  <Space>
+                    <Button
+                      onClick={handleShowSessionsList}
+                      icon={<UnorderedListOutlined />}
+                      size="small"
+                    >
+                      All Sessions
+                    </Button>
+                    <Button
+                      onClick={handleNewSession}
+                      icon={<ReloadOutlined />}
+                      size="small"
+                    >
+                      New Session
+                    </Button>
+                  </Space>
                 </Col>
               </Row>
             </Card>

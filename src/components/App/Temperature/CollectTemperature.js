@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Row, Col, Button, Card, Space, Typography, Statistic } from 'antd';
+import { Row, Col, Button, Card, Space, Typography, Statistic, List, Tag, Divider } from 'antd';
 import { 
     CameraOutlined, 
     CarOutlined, 
@@ -8,6 +8,8 @@ import {
     StopOutlined,
     WifiOutlined,
     CompassOutlined,
+    ClockCircleOutlined,
+    FireOutlined,
 } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
@@ -20,6 +22,7 @@ const CollectTemperature = ({
     camIP, 
     setCamIP,
     temperature,
+    temperatureRecords, // Add temperature records prop
     setTemperature,
     isCollecting,
     setIsCollecting,
@@ -29,7 +32,7 @@ const CollectTemperature = ({
     setLogMessages,
     scrollViewRef,
     switchButton,
-    manualReconnect
+    manualReconnect,
 }) => {
     // eslint-disable-next-line no-unused-vars
     const [camAngle, setCamAngle] = useState({V_TURN_CAM: 90, H_TURN_CAM: 90});
@@ -603,29 +606,89 @@ const CollectTemperature = ({
                                             </div>
                                             
                                             <div>
-                                                {Array.isArray(temperature) && temperature.length > 0 ? (
-                                                    <Card size="small" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                                                {/* Current Temperature Reading */}
+                                                {temperature > 25 ? (
+                                                    <Card size="small" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', marginBottom: '16px' }}>
                                                         <div style={{ textAlign: 'center' }}>
-                                                            <div style={{ fontSize: '48px', fontWeight: 'bold', color: '#52c41a', marginBottom: '8px' }}>
-                                                                {(temperature.reduce((x, y) => x + y, 0) / temperature.length)?.toFixed(2)}°C
+                                                            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#52c41a', marginBottom: '8px' }}>
+                                                                {(temperature)?.toFixed(2)}°C
                                                             </div>
                                                             <div>
-                                                                <Text strong style={{ fontSize: '16px' }}>Latest Temperature Reading</Text><br />
+                                                                <Text strong style={{ fontSize: '14px' }}>Latest Temperature Reading</Text><br />
                                                                 <Text type="secondary">Based on {temperature.length} data points</Text>
                                                             </div>
                                                         </div>
                                                     </Card>
-                                                ) : (
-                                                    <div style={{ 
-                                                        padding: '40px 20px', 
-                                                        textAlign: 'center', 
-                                                        backgroundColor: '#fafafa', 
-                                                        borderRadius: '8px',
-                                                        border: '2px dashed #d9d9d9'
-                                                    }}>
-                                                        <Text type="secondary" style={{ fontSize: '16px' }}>No temperature data collected yet</Text>
-                                                    </div>
-                                                )}
+                                                ) : null}
+
+                                                {/* Temperature Records List */}
+                                                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                                    {temperatureRecords && temperatureRecords.length > 0 ? (
+                                                        <>
+                                                            <Divider orientation="left" style={{ margin: '8px 0' }}>
+                                                                <Text strong>Temperature Records ({temperatureRecords.length})</Text>
+                                                            </Divider>
+                                                            <List
+                                                                size="small"
+                                                                dataSource={temperatureRecords}
+                                                                renderItem={(record) => (
+                                                                    <List.Item style={{ padding: '8px 0' }}>
+                                                                        <Card size="small" style={{ width: '100%', backgroundColor: '#f0f9ff', border: '1px solid #91d5ff' }}>
+                                                                            <Row gutter={[8, 4]}>
+                                                                                <Col span={12}>
+                                                                                    <Space>
+                                                                                        <FireOutlined style={{ color: '#fa8c16' }} />
+                                                                                        <Text strong style={{ color: '#fa8c16', fontSize: '16px' }}>
+                                                                                            {record.temperature}°C
+                                                                                        </Text>
+                                                                                    </Space>
+                                                                                </Col>
+                                                                                <Col span={12}>
+                                                                                    <Space>
+                                                                                        <EnvironmentOutlined style={{ color: '#1890ff' }} />
+                                                                                        <Text strong style={{ color: '#1890ff', fontSize: '16px' }}>
+                                                                                            {record.humidity}% RH
+                                                                                        </Text>
+                                                                                    </Space>
+                                                                                </Col>
+                                                                                <Col span={24}>
+                                                                                    <Space size="small">
+                                                                                        <ClockCircleOutlined style={{ color: '#8c8c8c' }} />
+                                                                                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                                                            {new Date(record.timestamp).toLocaleString()}
+                                                                                        </Text>
+                                                                                        {record.location.latitude !== 0 && (
+                                                                                            <Tag color="green" style={{ fontSize: '10px' }}>
+                                                                                                GPS: {record.location.latitude.toFixed(4)}, {record.location.longitude.toFixed(4)}
+                                                                                            </Tag>
+                                                                                        )}
+                                                                                    </Space>
+                                                                                </Col>
+                                                                                <Col span={24}>
+                                                                                    <Text type="secondary" style={{ fontSize: '11px' }}>
+                                                                                        Raw data: [{record.rawData.join(', ')}] ({record.rawData.length} points)
+                                                                                    </Text>
+                                                                                </Col>
+                                                                            </Row>
+                                                                        </Card>
+                                                                    </List.Item>
+                                                                )}
+                                                            />
+                                                        </>
+                                                    ) : (
+                                                        Array.isArray(temperature) && temperature.length === 0 && (
+                                                            <div style={{ 
+                                                                padding: '40px 20px', 
+                                                                textAlign: 'center', 
+                                                                backgroundColor: '#fafafa', 
+                                                                borderRadius: '8px',
+                                                                border: '2px dashed #d9d9d9'
+                                                            }}>
+                                                                <Text type="secondary" style={{ fontSize: '16px' }}>No temperature data collected yet</Text>
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
                                             </div>
                                         </Space>
                                     </Card>

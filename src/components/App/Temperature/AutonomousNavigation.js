@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Row, Col, Button, message, Card, Typography, Space, Statistic, Input, Upload, Image } from 'antd';
+import { Row, Col, Button, message, Card, Typography, Space, Statistic, Input, Upload, Image, List, Divider } from 'antd';
 import { 
     RobotOutlined, 
     EnvironmentOutlined, 
@@ -13,8 +13,9 @@ import {
     PictureOutlined,
     CameraOutlined,
     DeleteOutlined,
+    FireOutlined,
 } from '@ant-design/icons';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../firebase';
 
 const { Title, Text } = Typography;
@@ -38,6 +39,8 @@ const getTimestampValue = (timestamp) => {
 };
 
 const AutonomousNavigation = ({ 
+    selectedImage,
+    setSelectedImage,
     socketReady, 
     isReconnecting,
     logMessages, 
@@ -58,13 +61,18 @@ const AutonomousNavigation = ({
     isCollecting,
     setIsCollecting,
     manualReconnect,
-    camIP // Add camIP prop for live feed
+    camIP, // Add camIP prop for live feed
+    // GPS Simulation props
+    useGpsSimulation,
+    // simulatedGpsData,
+    // startGpsSimulation,
+    // stopGpsSimulation,
+    // resetGpsPosition
 }) => {
     // State for image management
     const [uploadedImages, setUploadedImages] = useState([]);
     const [backendImages, setBackendImages] = useState([]);
-    const [selectedImage, setSelectedImage] = useState(null);
-    // const [isStreamLoading, setIsStreamLoading] = useState(false);
+    const [temperatureRecords, setTemperatureRecords] = useState([]);
 
     // Auto camera alignment state
     const [isAutoAligning, setIsAutoAligning] = useState(false);
@@ -99,42 +107,107 @@ const AutonomousNavigation = ({
             
             const segmentedImages = [];
             
-            snapshot.forEach((doc) => {
+            // Process each image document and fetch its segments
+            const imagePromises = snapshot.docs.map(async (doc) => {
                 const imageData = doc.data();
                 const parentGps = imageData.gps;
                 const parentGyro = imageData.gyro;
                 const parentTimestamp = imageData.timestamp;
                 
-                // If the image has segments, extract them
-                if (imageData.segments && Array.isArray(imageData.segments)) {
-                    imageData.segments.forEach((segment, index) => {
-                        segmentedImages.push({
-                            uid: `${doc.id}_segment_${index}`, // Unique ID for each segment
-                            id: `${doc.id}_segment_${index}`,
-                            parentImageId: doc.id,
-                            segmentIndex: index,
+                try {
+                    // Fetch segments subcollection for this image
+                    const segmentsRef = collection(db, "sessions", sessionId, "images", doc.id, "segments");
+                    const segmentsSnapshot = await getDocs(segmentsRef);
+                    
+                    // If the image has segments in subcollection, extract them
+                    if (!segmentsSnapshot.empty) {
+                        segmentsSnapshot.forEach((segDoc) => {
+                            const segment = segDoc.data();
+                            console.log(segment);
                             
-                            // Segment specific data
-                            imageUrl: segment.segmentImageUrl,
-                            surfaceArea: segment.surfaceArea,
-                            material: segment.material,
-                            temperature: segment.temperature,
-                            humidity: segment.humidity,
-                            
-                            // Inherited from parent image
-                            gps: parentGps,
-                            gyro: parentGyro,
-                            timestamp: parentTimestamp,
-                            
-                            // For compatibility with existing code
-                            coordinates: parentGps || null,
-                            alt: `Segment ${index + 1} - ${segment.material || 'Unknown material'}`,
-                            src: segment.segmentImageUrl,
-                            url: segment.segmentImageUrl
+                            segmentedImages.push({
+                                uid: `${doc.id}_segment_${segDoc.id}`, // Unique ID for each segment
+                                id: `${doc.id}_segment_${segDoc.id}`,
+                                parentImageId: doc.id,
+                                segmentId: segDoc.id,
+                                
+                                // Segment specific data
+                                imageUrl: segment.segmentImageUrl,
+                                surfaceArea: segment.surfaceArea,
+                                material: segment.material,
+                                temperature: segment.temperature,
+                                humidity: segment.humidity,
+                                
+                                // Inherited from parent image
+                                gps: parentGps,
+                                gyro: parentGyro,
+                                timestamp: parentTimestamp,
+                                
+                                // For compatibility with existing code
+                                coordinates: parentGps || null,
+                                alt: `${segment.material || 'Unknown material'} - ${segment.surfaceArea || 'N/A'} m²`,
+                                src: segment.segmentImageUrl,
+                                url: segment.segmentImageUrl
+                            });
                         });
-                    });
+                    } else if (imageData.segments && Array.isArray(imageData.segments)) {
+                        // Fallback: If segments are stored as array in the main document
+                        imageData.segments.forEach((segment, index) => {
+                            segmentedImages.push({
+                                uid: `${doc.id}_segment_${index}`, // Unique ID for each segment
+                                id: `${doc.id}_segment_${index}`,
+                                parentImageId: doc.id,
+                                segmentIndex: index,
+                                
+                                // Segment specific data
+                                imageUrl: segment.segmentImageUrl,
+                                surfaceArea: segment.surfaceArea,
+                                material: segment.material,
+                                temperature: segment.temperature,
+                                humidity: segment.humidity,
+                                
+                                // Inherited from parent image
+                                gps: parentGps,
+                                gyro: parentGyro,
+                                timestamp: parentTimestamp,
+                                
+                                // For compatibility with existing code
+                                coordinates: parentGps || null,
+                                alt: `Segment ${index + 1} - ${segment.material || 'Unknown material'}`,
+                                src: segment.segmentImageUrl,
+                                url: segment.segmentImageUrl
+                            });
+                        });
+                    }
+                } catch (error) {
+                    console.error(`Error fetching segments for image ${doc.id}:`, error);
+                    // If segments fetch fails, check if segments are in the main document
+                    if (imageData.segments && Array.isArray(imageData.segments)) {
+                        imageData.segments.forEach((segment, index) => {
+                            segmentedImages.push({
+                                uid: `${doc.id}_segment_${index}`,
+                                id: `${doc.id}_segment_${index}`,
+                                parentImageId: doc.id,
+                                segmentIndex: index,
+                                imageUrl: segment.segmentImageUrl,
+                                surfaceArea: segment.surfaceArea,
+                                material: segment.material,
+                                temperature: segment.temperature,
+                                humidity: segment.humidity,
+                                gps: parentGps,
+                                gyro: parentGyro,
+                                timestamp: parentTimestamp,
+                                coordinates: parentGps || null,
+                                alt: `Segment ${index + 1} - ${segment.material || 'Unknown material'}`,
+                                src: segment.segmentImageUrl,
+                                url: segment.segmentImageUrl
+                            });
+                        });
+                    }
                 }
             });
+            
+            await Promise.all(imagePromises);
             
             // Sort by timestamp (newest first) - handle both Firestore and JS timestamps
             segmentedImages.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
@@ -175,7 +248,6 @@ const AutonomousNavigation = ({
     // Handle image selection and coordinate setting
     const handleImageSelect = (image) => {
         setSelectedImage(image);
-        setSelectedImage(image); // Set as current processing image
         if (image.coordinates) {
             setTargetCoords({
                 lat: image.coordinates.lat,
@@ -244,6 +316,8 @@ const AutonomousNavigation = ({
                 formData.append('image', imageObject.file);
             } else {
                 // For backend images or images without file object, convert data URL to blob
+                console.log(imageObject);
+                
                 try {
                     let blob;
                     if (imageObject.url.startsWith('data:')) {
@@ -266,17 +340,20 @@ const AutonomousNavigation = ({
                 }
             }
 
-            const response = await fetch('http://localhost:5003/api/set_reference', {
+            const response = await fetch('http://localhost:5000/api/set_reference', {
                 method: 'POST',
                 body: formData,
             });
 
             const responseData = await response.json();
             if (responseData.status !== 'error') {
-                message.success('Reference image sent successfully');
+                message.success('Reference target sent successfully! Navigating...');
+                if (imageObject.coordinates) {
+                    sendCommand(`SET_TARGET:${imageObject.coordinates.lat},${imageObject.coordinates.lng}`);
+                }
                 console.log('Backend response:', responseData);
             } else {
-                message.error(`Failed to send reference image: ${responseData.message}`);
+                message.error(`Failed to send reference target: ${responseData.message}`);
             }
         } catch (error) {
             console.error('Error sending reference image:', error);
@@ -293,7 +370,7 @@ const AutonomousNavigation = ({
         setAutonomousMode(true);
 
         try {
-            const response = await fetch('http://localhost:5003/api/start_stream', {
+            const response = await fetch('http://localhost:5000/api/start_stream', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -325,7 +402,7 @@ const AutonomousNavigation = ({
     // Function to stop video stream
     const stopVideoStream = async () => {
         try {
-            const response = await fetch('http://localhost:5003/api/stop_stream', {
+            const response = await fetch('http://localhost:5000/api/stop_stream', {
                 method: 'POST'
             });
 
@@ -348,7 +425,7 @@ const AutonomousNavigation = ({
     // Auto camera alignment functions
     const checkFrameMatches = useCallback(async () => {
         try {
-            const response = await fetch('http://localhost:5003/api/next_frame');
+            const response = await fetch('http://localhost:5000/api/next_frame');
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -613,6 +690,7 @@ const AutonomousNavigation = ({
     // Fetch backend images on component mount
     useEffect(() => {
         fetchImages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Set initial current processing image when images are available
@@ -621,7 +699,7 @@ const AutonomousNavigation = ({
         if (allImages.length > 0 && !selectedImage) {
             setSelectedImage(allImages[0]);
         }
-    }, [backendImages, uploadedImages, selectedImage]);
+    }, [backendImages, uploadedImages, selectedImage, setSelectedImage]);
 
     // Cleanup auto-alignment on unmount
     useEffect(() => () => {
@@ -629,6 +707,134 @@ const AutonomousNavigation = ({
                 clearTimeout(frameCheckInterval.current);
             }
     }, []);
+
+    useEffect(() => {
+        const sessionId = localStorage.getItem("heatscape_session_id");
+        
+        if (!sessionId) return undefined;
+    
+        let segmentUnsubscribers = [];
+        const segmentedImages = [];
+    
+        const unsub = onSnapshot(
+          collection(db, "sessions", sessionId, "images"),
+          (snapshot) => {
+            // Clean up previous segment listeners
+            segmentUnsubscribers.forEach(unsubFn => unsubFn());
+            segmentUnsubscribers = [];
+            segmentedImages.length = 0; // Clear the array
+            
+            snapshot.forEach((imageDoc) => {
+              const imageData = { id: imageDoc.id, ...imageDoc.data() };
+              const parentGps = imageData.gps;
+              const parentGyro = imageData.gyro;
+              const parentTimestamp = imageData.timestamp;
+              console.log("Listening to images in session:", imageData);
+    
+              // Set up real-time listener for segments of this image
+              const segmentUnsub = onSnapshot(
+                collection(db, "sessions", sessionId, "images", imageDoc.id, "segments"),
+                (segmentsSnapshot) => {
+                  // Remove existing segments for this image
+                  const filteredSegments = segmentedImages.filter(img => img.parentImageId !== imageDoc.id);
+                  segmentedImages.length = 0;
+                  segmentedImages.push(...filteredSegments);
+                  
+                  
+                  // Add updated segments for this image
+                  segmentsSnapshot.forEach((segDoc) => {
+                      const segment = segDoc.data();
+                      console.log(`Listening to segments for image`, segment);
+                      segmentedImages.push({
+                      uid: `${imageDoc.id}_segment_${segDoc.id}`,
+                      id: `${imageDoc.id}_segment_${segDoc.id}`,
+                      parentImageId: imageDoc.id,
+                      segmentId: segDoc.id,
+                      
+                      // Segment specific data
+                      imageUrl: segment.segmentImageUrl,
+                      surfaceArea: segment.surfaceArea,
+                      material: segment.material,
+                      temperature: segment.temperature,
+                      humidity: segment.humidity,
+                      
+                      // Inherited from parent image
+                      gps: parentGps,
+                      gyro: parentGyro,
+                      timestamp: parentTimestamp,
+                      
+                      // For compatibility with existing code
+                      coordinates: parentGps || null,
+                      alt: `${segment.material || 'Unknown material'}${segment.temperature ? ` - ${segment.temperature}°C` : ''}`,
+                      src: segment.segmentImageUrl,
+                      url: segment.segmentImageUrl,
+                      name: `${segment.material || 'Segment'} (${segment.surfaceArea || 'N/A'} m²)`
+                    });
+                  });
+    
+                  // Sort by timestamp (newest first) and update state
+                  // Filter out segments without humidity and temperature
+                  const filteredTemperatures = segmentedImages.filter(
+                    seg => (seg.humidity !== undefined || seg.humidity === 0) && (seg.temperature === undefined || seg.temperature !== 0)
+                  );
+                  filteredTemperatures.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+                  setTemperatureRecords([...filteredTemperatures]);
+                },
+                (segError) => {
+                  console.error(`Error listening to segments for image ${imageDoc.id}:`, segError);
+                }
+              );
+    
+              segmentUnsubscribers.push(segmentUnsub);
+            });
+          },
+          (error) => {
+            console.error("Error listening to images:", error);
+            message.error("Failed to load images");
+          }
+        );
+    
+        // Cleanup function
+        return () => {
+          unsub();
+          segmentUnsubscribers.forEach(unsubFn => unsubFn());
+        };
+    }, []);
+
+    useEffect(() => {console.log("Selected image changedxxxxxxxxxxxxxxxxxxxxxx:", selectedImage);
+    }, [selectedImage]);
+
+    // Handle temperature data updates and create temperature records
+    // useEffect(() => {
+    //     if (temperature && Array.isArray(temperature) && temperature.length > 0 && selectedImage) {
+    //         // Calculate average temperature
+    //         const avgTemperature = temperature.reduce((sum, temp) => sum + temp, 0) / temperature.length;
+    //         const avgHumidity = 45 + Math.random() * 20; // Simulated humidity (25-65%)
+            
+    //         // Create a temperature record with segment information
+    //         const newRecord = {
+    //             id: Date.now(),
+    //             timestamp: new Date().toISOString(),
+    //             temperature: parseFloat(avgTemperature.toFixed(1)),
+    //             humidity: parseFloat(avgHumidity.toFixed(1)),
+    //             rawData: temperature,
+                
+    //             // Include segment information
+    //             material: selectedImage.material,
+    //             surfaceArea: selectedImage.surfaceArea,
+    //             url: selectedImage.url,
+    //             segmentId: selectedImage.segmentId,
+    //             parentImageId: selectedImage.parentImageId,
+                
+    //             location: {
+    //                 latitude: gpsData.latitude,
+    //                 longitude: gpsData.longitude
+    //             }
+    //         };
+            
+    //         setTemperatureRecords(prev => [newRecord, ...prev].slice(0, 10)); // Keep only latest 10 records
+    //     }
+    // }, [temperature, selectedImage, gpsData]);
 
     return (
         <div style={{ 
@@ -721,6 +927,13 @@ const AutonomousNavigation = ({
                                                 fontSize: '16px'
                                             }}
                                         />
+                                        {useGpsSimulation && (
+                                            <div style={{ marginTop: '8px' }}>
+                                                <Text type="warning" style={{ fontSize: '12px' }}>
+                                                    🔄 Simulated GPS
+                                                </Text>
+                                            </div>
+                                        )}
                                     </Card>
                                 </Col>
 
@@ -1231,29 +1444,98 @@ const AutonomousNavigation = ({
                                             </div>
                                             
                                             <div>
-                                                {Array.isArray(temperature) && temperature.length > 0 ? (
-                                                    <Card size="small" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                                                {/* Current Temperature Reading */}
+                                                {temperature > 25 ? (
+                                                    <Card size="small" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f', marginBottom: '16px' }}>
                                                         <div style={{ textAlign: 'center' }}>
-                                                            <div style={{ fontSize: '48px', fontWeight: 'bold', color: '#52c41a', marginBottom: '8px' }}>
-                                                                {(temperature.reduce((x, y) => x + y, 0) / temperature.length)?.toFixed(2)}°C
+                                                            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#52c41a', marginBottom: '8px' }}>
+                                                                {(temperature)?.toFixed(2)}°C
                                                             </div>
                                                             <div>
-                                                                <Text strong style={{ fontSize: '16px' }}>Latest Temperature Reading</Text><br />
+                                                                <Text strong style={{ fontSize: '14px' }}>Latest Temperature Reading</Text><br />
                                                                 <Text type="secondary">Based on {temperature.length} data points</Text>
                                                             </div>
                                                         </div>
                                                     </Card>
-                                                ) : (
-                                                    <div style={{ 
-                                                        padding: '40px 20px', 
-                                                        textAlign: 'center', 
-                                                        backgroundColor: '#fafafa', 
-                                                        borderRadius: '8px',
-                                                        border: '2px dashed #d9d9d9'
-                                                    }}>
-                                                        <Text type="secondary" style={{ fontSize: '16px' }}>No temperature data collected yet</Text>
-                                                    </div>
-                                                )}
+                                                ) : null}
+
+                                                {/* Temperature Records List */}
+                                                <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                                                    {temperatureRecords && temperatureRecords.length > 0 ? (
+                                                        <>
+                                                            <Divider orientation="left" style={{ margin: '8px 0' }}>
+                                                                <Text strong style={{ fontSize: '12px' }}>Records ({temperatureRecords.length})</Text>
+                                                            </Divider>
+                                                            <List
+                                                                size="small"
+                                                                dataSource={temperatureRecords}
+                                                                renderItem={(record) => (
+                                                                    <List.Item style={{ padding: '6px 0' }}>
+                                                                        <Card size="small" style={{ width: '100%', backgroundColor: '#f0f9ff', border: '1px solid #91d5ff' }}>
+                                                                            <Row gutter={[8, 4]} align='middle'>
+                                                                                {/* Segment Image */}
+                                                                                {record.url && (
+                                                                                    <Col span={6}>
+                                                                                        <Image
+                                                                                            src={record.url}
+                                                                                            alt={record.material || 'Segment'}
+                                                                                            style={{
+                                                                                                width: '100%',
+                                                                                                height: '50px',
+                                                                                                objectFit: 'cover',
+                                                                                                borderRadius: '4px'
+                                                                                            }}
+                                                                                            preview={false}
+                                                                                        />
+                                                                                    </Col>
+                                                                                )}
+                                                                                
+                                                                                {/* Temperature and Humidity Data */}
+                                                                                <Col span={record.url ? 18 : 24}>
+                                                                                    <Row gutter={[4, 2]}>
+                                                                                        <Col span={12}>
+                                                                                            <Space size="small">
+                                                                                                <FireOutlined style={{ color: '#fa8c16' }} />
+                                                                                                <Text strong style={{ color: '#fa8c16', fontSize: '14px' }}>
+                                                                                                    {record.temperature}°C
+                                                                                                </Text>
+                                                                                            </Space>
+                                                                                        </Col>
+                                                                                        <Col span={12}>
+                                                                                            <Space size="small">
+                                                                                                <EnvironmentOutlined style={{ color: '#1890ff' }} />
+                                                                                                <Text strong style={{ color: '#1890ff', fontSize: '14px' }}>
+                                                                                                    {record.humidity}% RH
+                                                                                                </Text>
+                                                                                            </Space>
+                                                                                        </Col>
+                                                                                    </Row>
+                                                                                </Col>
+                                                                            </Row>
+                                                                        </Card>
+                                                                    </List.Item>
+                                                                )}
+                                                            />
+                                                            {temperatureRecords.length > 3 && (
+                                                                <Text type="secondary" style={{ fontSize: '11px' }}>
+                                                                    ... and {temperatureRecords.length - 3} more records
+                                                                </Text>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        Array.isArray(temperature) && temperature.length === 0 && (
+                                                            <div style={{ 
+                                                                padding: '30px 15px', 
+                                                                textAlign: 'center', 
+                                                                backgroundColor: '#fafafa', 
+                                                                borderRadius: '8px',
+                                                                border: '2px dashed #d9d9d9'
+                                                            }}>
+                                                                <Text type="secondary" style={{ fontSize: '14px' }}>No temperature data collected yet</Text>
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
                                             </div>
                                         </Space>
                                     </Card>
@@ -1330,12 +1612,93 @@ const AutonomousNavigation = ({
                                         <Text strong>{gpsData.hdop?.toFixed(2)}</Text>
                                     </Col>
                                     <Col span={10}>
-                                        <Text type="secondary">Time</Text><br />
+                                        <Text type="secondary">Time (UTC)</Text><br />
                                         <Text strong>{gpsData.time}</Text>
                                     </Col>
                                 </Row>
                             </Card>
                         </Col>
+
+                        {/* GPS Simulation Controls */}
+                        {/* <Col span={24}>
+                            <Card 
+                                title={
+                                    <Space>
+                                        <RobotOutlined />
+                                        <span>GPS Simulation</span>
+                                        {useGpsSimulation && <Text type="warning">(ACTIVE)</Text>}
+                                    </Space>
+                                } 
+                                size="small"
+                                extra={
+                                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                                        Use when GPS sensor is not working
+                                    </Text>
+                                }
+                            >
+                                <Row gutter={[8, 12]}>
+                                    <Col span={24}>
+                                        <Space wrap>
+                                            <Button
+                                                type={useGpsSimulation ? "default" : "primary"}
+                                                size="small"
+                                                onClick={useGpsSimulation ? stopGpsSimulation : startGpsSimulation}
+                                                disabled={!targetCoords.lat || !targetCoords.lng}
+                                                icon={useGpsSimulation ? <StopOutlined /> : <PlayCircleOutlined />}
+                                            >
+                                                {useGpsSimulation ? 'Stop Simulation' : 'Start Simulation'}
+                                            </Button>
+                                            <Button
+                                                size="small"
+                                                onClick={resetGpsPosition}
+                                                disabled={useGpsSimulation}
+                                            >
+                                                Reset Position
+                                            </Button>
+                                            {!targetCoords.lat || !targetCoords.lng ? (
+                                                <Text type="secondary" style={{ fontSize: '12px' }}>
+                                                    Set target coordinates first
+                                                </Text>
+                                            ) : null}
+                                        </Space>
+                                    </Col>
+                                    {useGpsSimulation && (
+                                        <Col span={24}>
+                                            <div style={{ 
+                                                padding: '8px', 
+                                                backgroundColor: '#fff7e6', 
+                                                borderRadius: '6px', 
+                                                border: '1px solid #ffd591',
+                                                fontSize: '12px'
+                                            }}>
+                                                <Row gutter={[8, 4]}>
+                                                    <Col span={12}>
+                                                        <Text type="secondary">Start Position:</Text><br />
+                                                        <Text code style={{ fontSize: '10px' }}>
+                                                            {simulatedGpsData.latitude?.toFixed(6)}, {simulatedGpsData.longitude?.toFixed(6)}
+                                                        </Text>
+                                                    </Col>
+                                                    <Col span={12}>
+                                                        <Text type="secondary">Target Position:</Text><br />
+                                                        <Text code style={{ fontSize: '10px' }}>
+                                                            {targetCoords.lat}, {targetCoords.lng}
+                                                        </Text>
+                                                    </Col>
+                                                    <Col span={12}>
+                                                        <Text type="secondary">Simulation Speed:</Text><br />
+                                                        <Text>0.5 m/s</Text>
+                                                    </Col>
+                                                    <Col span={12}>
+                                                        <Text type="secondary">Update Rate:</Text><br />
+                                                        <Text>Every 2 seconds</Text>
+                                                    </Col>
+                                                </Row>
+                                            </div>
+                                        </Col>
+                                    )}
+                                </Row>
+                            </Card>
+                        </Col> */}
 
                         {/* Navigation Details - Only show when autonomous mode is active */}
                         {autonomousMode && (

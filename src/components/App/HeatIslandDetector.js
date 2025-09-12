@@ -211,28 +211,27 @@ const HeatIslandDetector = () => {
           alive.add(imageId);
 
           // ensure sub-collection listener for this image's segments
-          // ensure sub-collection listener for this image's segments
-if (!segmentUnsubsRef.current[imageId]) {
-  const segCol = collection(db, 'sessions', sessionId, 'images', imageId, 'segments');
-  segmentUnsubsRef.current[imageId] = onSnapshot(
-    segCol,
-    (segSnap) => {
-      const locals = [];
-      segSnap.forEach((sdoc) => locals.push(mapFsSegmentSubdocToLocal(sdoc.data())));
+          if (!segmentUnsubsRef.current[imageId]) {
+            const segCol = collection(db, 'sessions', sessionId, 'images', imageId, 'segments');
+            segmentUnsubsRef.current[imageId] = onSnapshot(
+              segCol,
+              (segSnap) => {
+                const locals = [];
+                segSnap.forEach((sdoc) => locals.push(mapFsSegmentSubdocToLocal(sdoc.data())));
 
-      // 1) keep cache (optional, still useful)
-      setSegmentDocsByImage((prev) => ({ ...prev, [imageId]: locals }));
+                // 1) keep cache (optional, still useful)
+                setSegmentDocsByImage((prev) => ({ ...prev, [imageId]: locals }));
 
-      // 2) **update the visible item immediately**
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === `fs:${imageId}` ? { ...it, segments: locals } : it
-        )
-      );
-    },
-    (err) => console.error('segments sub-collection listener error:', err)
-  );
-}
+                // 2) **update the visible item immediately**
+                setItems((prev) =>
+                  prev.map((it) =>
+                    it.id === `fs:${imageId}` ? { ...it, segments: locals } : it
+                  )
+                );
+              },
+              (err) => console.error('segments sub-collection listener error:', err)
+            );
+          }
 
 
           // prefer sub-collection data if available; otherwise fallback to array field
@@ -843,7 +842,7 @@ if (!segmentUnsubsRef.current[imageId]) {
                   <th>Material</th>
                   <th>Temp (°C)</th>
                   <th>Humidity (%)</th>
-                  <th>Area (sq.m)</th>
+                  <th>Area (sq.cm)</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -912,10 +911,11 @@ if (!segmentUnsubsRef.current[imageId]) {
                   <Card className="mb-3">
                     <Card.Header>Per-Segment Results</Card.Header>
                     <Card.Body>
-                      {Array.isArray(item.results.detailed_results) && item.results.detailed_results.map((det, idx) => {
-                        const flag = det.heat_island === 'Yes';
-                        return (
-                          <div key={`${item.id}-det-${idx}`}
+                      {Array.isArray(item.results.detailed_results) && item.results.detailed_results.map((det) => {
+                          const flag = det.heat_island === 'Yes';
+                          const key = `${item.id}-det-${det.location || det.material || det.label || Math.random()}`;
+                          return (
+                            <div key={key}
                                className={`mb-2 ${flag ? 'text-danger' : 'text-success'}`}>
                             <strong>{det.location || '(segment)'}</strong>
                             <span className="ms-2 badge bg-secondary">{flag ? 'Heat Island' : 'No Heat Island'}</span>

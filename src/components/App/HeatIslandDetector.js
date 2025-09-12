@@ -14,7 +14,7 @@ import {
 import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 
-const API_BASE = 'http://localhost:5000'; // backend base
+const API_BASE = 'http://localhost:5002'; // backend base
 
 // Utility: stable IDs
 const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
@@ -23,7 +23,7 @@ const materialOptions = [
   'asphalt','concrete','grass','metal','plastic','rubber','sand','soil','solar panel','steel','water','artificial turf','glass'
 ];
 
-// Firestore segment -> local segment (supports optional label if present)
+// Firestore segment (array field on image doc) -> local UI segment
 const mapFsSegmentToLocal = (seg) => {
   const rawMaterial = (seg?.material || '').toLowerCase();
   return {
@@ -33,6 +33,20 @@ const mapFsSegmentToLocal = (seg) => {
     temp: Number(seg?.temperature ?? 0),
     humidity: Number(seg?.humidity ?? 0),
     area: Number(seg?.surfaceArea ?? 0),
+  };
+};
+
+// Firestore segment (sub-collection doc) -> local UI segment
+const mapFsSegmentSubdocToLocal = (seg) => {
+  const rawMaterial = (seg?.material || '').toLowerCase();
+  return {
+    id: uid(),
+    label: String(seg?.label ?? ''),
+    material: materialOptions.includes(rawMaterial) ? rawMaterial : '',
+    temp: Number(seg?.temperature ?? 0),
+    humidity: Number(seg?.humidity ?? 0),
+    area: Number(seg?.surfaceArea ?? 0),
+    segmentImageUrl: String(seg?.segmentImageUrl ?? ''),
   };
 };
 
@@ -76,7 +90,7 @@ const toApiSegments = (segments) =>
     };
   });
 
-// Convert local UI segments -> Firestore schema
+// Convert local UI segments -> Firestore schema (array form)
 const segmentsToFs = (segments) =>
   segments.map((s) => ({
     label: String(s.label || '').trim() || null,
@@ -150,9 +164,15 @@ const HeatIslandDetector = () => {
   const [items, setItems] = useState([]); // fs + manual
   const [globalError, setGlobalError] = useState(null);
 
-  // refs
+  // Segment sub-collection data: { [imageDocId]: localSegments[] }
+  const [segmentDocsByImage, setSegmentDocsByImage] = useState({});
+  const segmentUnsubsRef = useRef({});         // { [imageDocId]: () => unsubscribe }
+  const segmentDocsRef = useRef(segmentDocsByImage);
+
+  // keep refs in sync
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { segmentDocsRef.current = segmentDocsByImage; }, [segmentDocsByImage]);
 
   // chat scroll refs
   const chatBoxRefs = useRef({}); // { [imageId]: HTMLDivElement }
@@ -172,38 +192,73 @@ const HeatIslandDetector = () => {
     setSessionId(saved || null);
   }, []);
 
-  // Live Firestore subscription for session images
+  // Live Firestore subscription for session images + wire sub-collection listeners
   useEffect(() => {
     if (!sessionId) return undefined;
+
     const imagesCol = collection(db, 'sessions', sessionId, 'images');
 
-    const unsub = onSnapshot(
+    const unsubImages = onSnapshot(
       imagesCol,
       (snap) => {
         const fsItems = [];
-        // capture current items so we can preserve UI-only state on refresh
         const prevItems = itemsRef.current || [];
+        const alive = new Set(); // track images that still exist this tick
 
         snap.forEach((d) => {
           const data = d.data();
-          // base FS-backed item (pure data coming from Firestore)
+          const imageId = d.id;
+          alive.add(imageId);
+
+          // ensure sub-collection listener for this image's segments
+          // ensure sub-collection listener for this image's segments
+if (!segmentUnsubsRef.current[imageId]) {
+  const segCol = collection(db, 'sessions', sessionId, 'images', imageId, 'segments');
+  segmentUnsubsRef.current[imageId] = onSnapshot(
+    segCol,
+    (segSnap) => {
+      const locals = [];
+      segSnap.forEach((sdoc) => locals.push(mapFsSegmentSubdocToLocal(sdoc.data())));
+
+      // 1) keep cache (optional, still useful)
+      setSegmentDocsByImage((prev) => ({ ...prev, [imageId]: locals }));
+
+      // 2) **update the visible item immediately**
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === `fs:${imageId}` ? { ...it, segments: locals } : it
+        )
+      );
+    },
+    (err) => console.error('segments sub-collection listener error:', err)
+  );
+}
+
+
+          // prefer sub-collection data if available; otherwise fallback to array field
+          const subSegments = segmentDocsRef.current[imageId];
+          const segments =
+            Array.isArray(subSegments) && subSegments.length > 0
+              ? subSegments
+              : (Array.isArray(data?.segments) ? data.segments.map(mapFsSegmentToLocal) : []);
+
           const base = {
-            id: `fs:${d.id}`,
+            id: `fs:${imageId}`,
             source: 'fs',
-            fsDocId: d.id,
+            fsDocId: imageId,
             imageUrl: data?.imageUrl || '',
             imageFile: null,
             imagePreview: null,
             timestamp: data?.timestamp || Date.now(),
             gps: data?.gps || null,
             gyro: data?.gyro || null,
-            segments: Array.isArray(data?.segments) ? data.segments.map(mapFsSegmentToLocal) : [],
+            segments,
             results: data?.detection
               ? {
                   summary: {
                     avg_temperature: data.detection?.avg_temperature,
                     avg_humidity: data.detection?.avg_humidity,
-                    heat_retaining_percent: data.detection?.avg_humidity !== undefined ? data.detection?.heat_retaining_percent : data.detection?.heat_retaining_percent, // unchanged but safe
+                    heat_retaining_percent: data.detection?.heat_retaining_percent,
                     vegetation_percent: data.detection?.vegetation_percent,
                     final_decision: data.detection?.is_heat_island ? 'Heat Island Detected' : 'No Heat Island Detected'
                   },
@@ -214,11 +269,9 @@ const HeatIslandDetector = () => {
             warnings: [],
           };
 
-          // find any existing item for this doc so we can preserve UI state
-          const prev = prevItems.find((x) => x.id === `fs:${d.id}`);
+          const prev = prevItems.find((x) => x.id === `fs:${imageId}`);
           fsItems.push({
             ...base,
-            // preserve UI-only / transient fields so chat doesn’t collapse on refresh
             loadingPredict: prev?.loadingPredict ?? false,
             loadingRecommend: prev?.loadingRecommend ?? false,
             error: prev?.error ?? null,
@@ -228,6 +281,18 @@ const HeatIslandDetector = () => {
             chatLoading: prev?.chatLoading ?? false,
             chatSuggestions: prev?.chatSuggestions ?? [],
           });
+        });
+
+        // clean up segment listeners for images no longer present
+        Object.keys(segmentUnsubsRef.current).forEach((imgId) => {
+          if (!alive.has(imgId)) {
+            try { segmentUnsubsRef.current[imgId]?.(); } catch { /* ignore */ }
+            delete segmentUnsubsRef.current[imgId];
+            setSegmentDocsByImage((prev) => {
+              const { [imgId]: _, ...rest } = prev;
+              return rest;
+            });
+          }
         });
 
         setItems((prev) => {
@@ -241,7 +306,17 @@ const HeatIslandDetector = () => {
       }
     );
 
-    return () => unsub();
+    // cleanup
+    return () => {
+      try { unsubImages(); } catch { /* ignore */ }
+      Object.values(segmentUnsubsRef.current).forEach((fn) => {
+        try {
+          if (fn) fn();
+        } catch { /* ignore */ }
+      });      
+      segmentUnsubsRef.current = {};
+      setSegmentDocsByImage({});
+    };
   }, [sessionId]);
 
   // ---------- Manual helpers ----------
@@ -314,7 +389,7 @@ const HeatIslandDetector = () => {
         timestamp: item.timestamp || Date.now(),
         gps: item.gps || null,
         gyro: item.gyro || null,
-        segments: segmentsFs,
+        segments: segmentsFs, // keep array version for compatibility
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -331,6 +406,7 @@ const HeatIslandDetector = () => {
   };
 
   const persistSegments = async (imageDocRef, item) => {
+    // Persist array form (back-compat). If you also want sub-doc writes, add them here.
     await updateDoc(imageDocRef, {
       segments: segmentsToFs(item.segments),
       updatedAt: serverTimestamp(),
@@ -501,11 +577,10 @@ const HeatIslandDetector = () => {
   };
 
   // ---------- Chat helpers ----------
-  // Send message (supports override text for suggestion clicks)
   const sendChatMessage = async (imageId, overrideText = null) => {
     const item = getCurrentItem(imageId);
     if (!item) return;
-    
+
     const message = overrideText !== null
       ? String(overrideText).trim()
       : String(item.chatInput || '').trim();
@@ -530,17 +605,16 @@ const HeatIslandDetector = () => {
       return;
     }
 
-    // Add user message and ensure chat stays open
     const userMessage = { role: 'user', text: message, timestamp: Date.now() };
-    
+
     setItems((prev) =>
       prev.map((x) =>
         x.id === imageId
           ? {
               ...x,
-              chatOpen: true, // Ensure chat stays open
+              chatOpen: true,
               chatMessages: [...x.chatMessages, userMessage],
-              chatInput: '', // Always clear input after sending
+              chatInput: '',
               chatLoading: true,
               error: null,
             }
@@ -548,7 +622,6 @@ const HeatIslandDetector = () => {
       )
     );
 
-    // Scroll to bottom after adding user message
     scrollChatToBottom(imageId);
 
     try {
@@ -580,12 +653,11 @@ const HeatIslandDetector = () => {
         )
       );
 
-      // Scroll to bottom after adding assistant response
       scrollChatToBottom(imageId);
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Chat failed';
       const errorMessage = { role: 'assistant', text: `Error: ${msg}`, timestamp: Date.now() };
-      
+
       setItems((prev) =>
         prev.map((x) =>
           x.id === imageId
@@ -614,10 +686,9 @@ const HeatIslandDetector = () => {
         };
       })
     );
-    
-    // If opening chat, scroll to bottom after a short delay
+
     setTimeout(() => {
-      const item = getCurrentItem(imageId);
+      const item = itemsRef.current.find((x) => x.id === imageId);
       if (item?.chatOpen) {
         scrollChatToBottom(imageId);
       }
@@ -637,12 +708,9 @@ const HeatIslandDetector = () => {
   };
 
   const pickSuggestion = (imageId, text) => {
-    // Ensure chat is open first, then send message
     setItems((prev) =>
       prev.map((x) => (x.id === imageId ? { ...x, chatOpen: true } : x))
     );
-    
-    // Small delay to ensure UI is updated before sending
     setTimeout(() => {
       sendChatMessage(imageId, text);
     }, 50);
@@ -770,6 +838,7 @@ const HeatIslandDetector = () => {
             <Table striped bordered hover responsive className="mb-3">
               <thead>
                 <tr>
+                  <th>Mask</th>
                   <th>Location (label)</th>
                   <th>Material</th>
                   <th>Temp (°C)</th>
@@ -782,6 +851,15 @@ const HeatIslandDetector = () => {
                 {item.segments.length ? (
                   item.segments.map((seg) => (
                     <tr key={seg.id}>
+                      <td style={{ width: 68 }}>
+                        {seg.segmentImageUrl ? (
+                          <img
+                            src={seg.segmentImageUrl}
+                            alt="segment"
+                            style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }}
+                          />
+                        ) : null}
+                      </td>
                       <td style={{ minWidth: 160 }}>
                         <Form.Control type="text" value={seg.label} placeholder="building / road / sidewalk"
                           onChange={(e) => updateSegmentField(item.id, seg.id, 'label', e.target.value)} />
@@ -807,7 +885,7 @@ const HeatIslandDetector = () => {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan={6} className="text-center">No segments.</td></tr>
+                  <tr><td colSpan={7} className="text-center">No segments.</td></tr>
                 )}
               </tbody>
             </Table>
@@ -834,10 +912,10 @@ const HeatIslandDetector = () => {
                   <Card className="mb-3">
                     <Card.Header>Per-Segment Results</Card.Header>
                     <Card.Body>
-                      {Array.isArray(item.results.detailed_results) && item.results.detailed_results.map((det) => {
+                      {Array.isArray(item.results.detailed_results) && item.results.detailed_results.map((det, idx) => {
                         const flag = det.heat_island === 'Yes';
                         return (
-                          <div key={`${item.id}-${det.location}-${det.material}-${det.temperature}-${det.humidity}-${det.area}`}
+                          <div key={`${item.id}-det-${idx}`}
                                className={`mb-2 ${flag ? 'text-danger' : 'text-success'}`}>
                             <strong>{det.location || '(segment)'}</strong>
                             <span className="ms-2 badge bg-secondary">{flag ? 'Heat Island' : 'No Heat Island'}</span>
@@ -916,7 +994,7 @@ const HeatIslandDetector = () => {
 
                   {item.chatOpen && (
                     <div className="mt-3">
-                      {/* Enhanced Suggested questions */}
+                      {/* Suggested questions */}
                       <div className="mb-3">
                         <div className="d-flex align-items-center mb-2">
                           <span className="me-2 text-muted small fw-bold">💡 Quick Questions:</span>
@@ -931,9 +1009,9 @@ const HeatIslandDetector = () => {
                           </Button>
                         </div>
                         <div className="d-flex flex-wrap gap-2">
-                          {item.chatSuggestions.map((q) => (
+                          {item.chatSuggestions.map((q, i) => (
                             <Button
-                              key={`${item.id}-sugg-${q}`}
+                              key={`${item.id}-sugg-${i}`}
                               size="sm"
                               variant="outline-primary"
                               className="text-start"
@@ -956,7 +1034,7 @@ const HeatIslandDetector = () => {
                         </div>
                       </div>
 
-                      {/* Chat transcript (user right, assistant left) */}
+                      {/* Chat transcript */}
                       <Card style={{ border: '2px solid #e2e8f0' }}>
                         <Card.Header 
                           className="py-2"
@@ -998,12 +1076,7 @@ const HeatIslandDetector = () => {
                             const isUser = m.role === 'user';
                             return (
                               <div key={`${item.id}-chat-${m.timestamp ?? idx}`} className="d-flex w-100 mb-3 align-items-start">
-                                {/* Assistant avatar on the left */}
-                                {!isUser && (
-                                  <div className="me-2" style={{ fontSize: 16 }}>🤖</div>
-                                )}
-
-                                {/* Bubble */}
+                                {!isUser && <div className="me-2" style={{ fontSize: 16 }}>🤖</div>}
                                 <div className={isUser ? 'ms-auto' : ''} style={{ maxWidth: '80%' }}>
                                   <div
                                     className="p-3 rounded-3 position-relative"
@@ -1019,17 +1092,11 @@ const HeatIslandDetector = () => {
                                     }}
                                   >
                                     <div className="d-flex align-items-center mb-2">
-                                      <div
-                                        className="fw-bold small"
-                                        style={{ color: isUser ? 'rgba(255,255,255,0.9)' : '#4a5568', fontSize: '12px' }}
-                                      >
+                                      <div className="fw-bold small" style={{ color: isUser ? 'rgba(255,255,255,0.9)' : '#4a5568', fontSize: '12px' }}>
                                         {isUser ? 'You' : 'Assistant'}
                                       </div>
                                       {m.timestamp && (
-                                        <div
-                                          className="ms-auto small"
-                                          style={{ color: isUser ? 'rgba(255,255,255,0.7)' : '#718096', fontSize: '11px' }}
-                                        >
+                                        <div className="ms-auto small" style={{ color: isUser ? 'rgba(255,255,255,0.7)' : '#718096', fontSize: '11px' }}>
                                           {formatTime(m.timestamp)}
                                         </div>
                                       )}
@@ -1037,11 +1104,7 @@ const HeatIslandDetector = () => {
                                     <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
                                   </div>
                                 </div>
-
-                                {/* User avatar on the right */}
-                                {isUser && (
-                                  <div className="ms-2" style={{ fontSize: 16 }}>👤</div>
-                                )}
+                                {isUser && <div className="ms-2" style={{ fontSize: 16 }}>👤</div>}
                               </div>
                             );
                           })}
@@ -1074,7 +1137,6 @@ const HeatIslandDetector = () => {
                           )}
                         </div>
 
-                        {/* Input */}
                         <Card.Footer style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                           <div className="d-flex gap-2 align-items-end">
                             <div className="flex-grow-1">

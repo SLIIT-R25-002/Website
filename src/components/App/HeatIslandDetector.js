@@ -216,30 +216,41 @@ const HeatIslandDetector = () => {
             segmentUnsubsRef.current[imageId] = onSnapshot(
               segCol,
               (segSnap) => {
-                const locals = [];
-                segSnap.forEach((sdoc) => locals.push(mapFsSegmentSubdocToLocal(sdoc.data())));
+                const localsRaw = [];
+                segSnap.forEach((sdoc) => localsRaw.push(mapFsSegmentSubdocToLocal(sdoc.data())));
 
-                // 1) keep cache (optional, still useful)
-                setSegmentDocsByImage((prev) => ({ ...prev, [imageId]: locals }));
+                // Backfill labels from what's on the card (legacy array often has label)
+                const current = itemsRef.current.find((it) => it.id === `fs:${imageId}`);
+                const prior = Array.isArray(current?.segments) ? current.segments : [];
+                const merged = localsRaw.map((s, idx) => ({
+                  ...s,
+                  label: s.label && s.label.trim() ? s.label : (prior[idx]?.label || ''),
+                }));
 
-                // 2) **update the visible item immediately**
+                // Cache + update the visible item immediately
+                setSegmentDocsByImage((prev) => ({ ...prev, [imageId]: merged }));
                 setItems((prev) =>
-                  prev.map((it) =>
-                    it.id === `fs:${imageId}` ? { ...it, segments: locals } : it
-                  )
+                  prev.map((it) => (it.id === `fs:${imageId}` ? { ...it, segments: merged } : it))
                 );
               },
               (err) => console.error('segments sub-collection listener error:', err)
             );
           }
 
+          // legacy array segments from image doc (often contains labels)
+          const arraySegments = Array.isArray(data?.segments)
+            ? data.segments.map(mapFsSegmentToLocal)
+            : [];
 
-          // prefer sub-collection data if available; otherwise fallback to array field
+          // if we already have sub-docs, use them but backfill labels from the array when missing
           const subSegments = segmentDocsRef.current[imageId];
           const segments =
             Array.isArray(subSegments) && subSegments.length > 0
-              ? subSegments
-              : (Array.isArray(data?.segments) ? data.segments.map(mapFsSegmentToLocal) : []);
+              ? subSegments.map((s, idx) => ({
+                  ...s,
+                  label: s.label && s.label.trim() ? s.label : (arraySegments[idx]?.label || ''),
+                }))
+              : arraySegments;
 
           const base = {
             id: `fs:${imageId}`,
@@ -309,10 +320,8 @@ const HeatIslandDetector = () => {
     return () => {
       try { unsubImages(); } catch { /* ignore */ }
       Object.values(segmentUnsubsRef.current).forEach((fn) => {
-        try {
-          if (fn) fn();
-        } catch { /* ignore */ }
-      });      
+        try { if (fn) fn(); } catch { /* ignore */ }
+      });
       segmentUnsubsRef.current = {};
       setSegmentDocsByImage({});
     };
@@ -842,7 +851,7 @@ const HeatIslandDetector = () => {
                   <th>Material</th>
                   <th>Temp (°C)</th>
                   <th>Humidity (%)</th>
-                  <th>Area (sq.cm)</th>
+                  <th>Area (sq.m)</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -912,11 +921,10 @@ const HeatIslandDetector = () => {
                     <Card.Header>Per-Segment Results</Card.Header>
                     <Card.Body>
                       {Array.isArray(item.results.detailed_results) && item.results.detailed_results.map((det) => {
-                          const flag = det.heat_island === 'Yes';
-                          const key = `${item.id}-det-${det.location || det.material || det.label || Math.random()}`;
-                          return (
-                            <div key={key}
-                               className={`mb-2 ${flag ? 'text-danger' : 'text-success'}`}>
+                        const flag = det.heat_island === 'Yes';
+                        const key = `${item.id}-det-${det.location || det.material || det.label || Math.random()}`;
+                        return (
+                          <div key={key} className={`mb-2 ${flag ? 'text-danger' : 'text-success'}`}>
                             <strong>{det.location || '(segment)'}</strong>
                             <span className="ms-2 badge bg-secondary">{flag ? 'Heat Island' : 'No Heat Island'}</span>
                             <div className="small text-muted">
@@ -1009,9 +1017,9 @@ const HeatIslandDetector = () => {
                           </Button>
                         </div>
                         <div className="d-flex flex-wrap gap-2">
-                          {item.chatSuggestions.map((q, i) => (
+                          {item.chatSuggestions.map((q) => (
                             <Button
-                              key={`${item.id}-sugg-${i}`}
+                              key={`${item.id}-sugg-${q}`}
                               size="sm"
                               variant="outline-primary"
                               className="text-start"
@@ -1072,10 +1080,11 @@ const HeatIslandDetector = () => {
                             </div>
                           )}
 
-                          {item.chatMessages.map((m, idx) => {
+                          {item.chatMessages.map((m) => {
                             const isUser = m.role === 'user';
+                            const k = `${item.id}-msg-${m.timestamp ?? `${m.role}-${(m.text || '').length}`}`;
                             return (
-                              <div key={`${item.id}-chat-${m.timestamp ?? idx}`} className="d-flex w-100 mb-3 align-items-start">
+                              <div key={k} className="d-flex w-100 mb-3 align-items-start">
                                 {!isUser && <div className="me-2" style={{ fontSize: 16 }}>🤖</div>}
                                 <div className={isUser ? 'ms-auto' : ''} style={{ maxWidth: '80%' }}>
                                   <div

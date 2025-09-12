@@ -1,4 +1,4 @@
-// HeatIslandDetector.js (merged & fixed)
+// HeatIslandDetector.js
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Container, Row, Col, Form, Button, Table, Alert, Card, Badge } from 'react-bootstrap';
 import axios from 'axios';
@@ -14,51 +14,16 @@ import {
 import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 
-const API_BASE = 'http://localhost:5002'; // change if your backend differs
+const API_BASE = 'http://localhost:5002'; // backend base
 
-// ------------ Utilities -------------
-const uid = () =>
-  (typeof crypto !== 'undefined' && crypto?.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
+// Utility: stable IDs
+const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 
 const materialOptions = [
   'asphalt','concrete','grass','metal','plastic','rubber','sand','soil','solar panel','steel','water','artificial turf','glass'
 ];
 
-const emptySegment = () => ({
-  id: uid(),
-  label: '',
-  material: '',
-  temp: '',
-  humidity: '',
-  area: ''
-});
-
-const newManualItem = () => ({
-  id: uid(),
-  source: 'manual',
-  fsDocId: null,
-  imageFile: null,
-  imagePreview: null,   // dataURL
-  imageUrl: null,       // set after upload to storage (manual) or from Firestore (fs)
-  timestamp: Date.now(),
-  gps: null,
-  gyro: null,
-  segments: [emptySegment()],
-  results: null,           // { summary, detailed_results }
-  warnings: [],
-  recommendation: null,    // string
-  loadingPredict: false,
-  loadingRecommend: false,
-  error: null,
-  // chat
-  chatOpen: false,
-  chatMessages: [],
-  chatInput: '',
-  chatLoading: false,
-  chatSuggestions: [],
-});
-
-// ---------- Firestore mapping ----------
+// Firestore segment (array field on image doc) -> local UI segment
 const mapFsSegmentToLocal = (seg) => {
   const rawMaterial = (seg?.material || '').toLowerCase();
   return {
@@ -71,6 +36,7 @@ const mapFsSegmentToLocal = (seg) => {
   };
 };
 
+// Firestore segment (sub-collection doc) -> local UI segment
 const mapFsSegmentSubdocToLocal = (seg) => {
   const rawMaterial = (seg?.material || '').toLowerCase();
   return {
@@ -84,7 +50,34 @@ const mapFsSegmentSubdocToLocal = (seg) => {
   };
 };
 
-// Convert local UI segments -> API payload (prevent NaN -> null leakage)
+// New manual item template
+const newManualItem = () => ({
+  id: uid(),
+  source: 'manual',          // 'manual' | 'fs'
+  fsDocId: null,
+  imageUrl: '',
+  imageFile: null,
+  imagePreview: null,        // dataURL
+  timestamp: Date.now(),
+  gps: null,
+  gyro: null,
+  segments: [{ id: uid(), label: '', material: '', temp: '', humidity: '', area: '' }],
+  results: null,
+  warnings: [],
+  recommendation: null,
+  loadingPredict: false,
+  loadingRecommend: false,
+  error: null,
+
+  // --- Chat state (per card) ---
+  chatOpen: false,
+  chatMessages: [],     // [{ role: 'user'|'assistant', text: string, timestamp: number }]
+  chatInput: '',
+  chatLoading: false,
+  chatSuggestions: [],
+});
+
+// Convert local segments -> API payload (prevent NaN -> null leakage)
 const toApiSegments = (segments) =>
   segments.map((s) => {
     const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
@@ -97,7 +90,7 @@ const toApiSegments = (segments) =>
     };
   });
 
-// Convert local UI segments -> Firestore (array field)
+// Convert local UI segments -> Firestore schema (array form)
 const segmentsToFs = (segments) =>
   segments.map((s) => ({
     label: String(s.label || '').trim() || null,
@@ -118,6 +111,7 @@ const uploadDataUrlToStorage = async (path, dataUrl) => {
   return getDownloadURL(ref);
 };
 
+// Pick extension based on dataURL MIME
 const extFromDataUrl = (durl) => {
   const m = String(durl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
   if (!m) return 'jpg';
@@ -127,7 +121,7 @@ const extFromDataUrl = (durl) => {
   return 'jpg';
 };
 
-// --------- Chat suggestion helpers ----------
+// --------- Helpers for "Suggested questions" ----------
 const uniq = (arr) => Array.from(new Set(arr));
 
 const getMaterialsSet = (item) =>
@@ -138,15 +132,17 @@ const getMaterialsSet = (item) =>
   );
 
 const buildChatSuggestions = (item) => {
-  const base = [
-    'What short-term fixes can reduce surface temperatures here?',
-    'How much shade do we need to meaningfully reduce heat?',
-    'What low-cost interventions can we start this month?',
-    'How can we measure improvement after applying these suggestions?'
-  ];
   const mats = getMaterialsSet(item);
   const heatPct = Number(item?.results?.summary?.heat_retaining_percent ?? NaN);
   const vegPct  = Number(item?.results?.summary?.vegetation_percent ?? NaN);
+
+  const base = [
+    'What would this roughly cost for our site?',
+    'Can you outline quick wins we can implement in 0–3 months?',
+    'What mid-term and long-term steps should we plan for?',
+    'Which materials should we prioritize replacing and why?',
+    'How do we maintain these interventions over time?',
+  ];
 
   if (!Number.isNaN(heatPct) && heatPct >= 60) {
     base.push('Which cool roof or cool pavement options fit our conditions?');
@@ -163,22 +159,20 @@ const buildChatSuggestions = (item) => {
   return uniq(base).slice(0, 7);
 };
 
-// ---------- Component ----------
-const HeatIslandBatchDetector = () => {
+const HeatIslandDetector = () => {
   const [sessionId, setSessionId] = useState(null);
-  const [items, setItems] = useState([]); // Firestore + Manual
+  const [items, setItems] = useState([]); // fs + manual
   const [globalError, setGlobalError] = useState(null);
 
-  // Segment sub-collection cache { [imageDocId]: localSegments[] }
+  // Segment sub-collection data: { [imageDocId]: localSegments[] }
   const [segmentDocsByImage, setSegmentDocsByImage] = useState({});
-  const segmentUnsubsRef = useRef({}); // { [imageDocId]: () => unsubscribe }
+  const segmentUnsubsRef = useRef({});         // { [imageDocId]: () => unsubscribe }
+  const segmentDocsRef = useRef(segmentDocsByImage);
 
-  // refs to avoid stale closures
+  // keep refs in sync
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
-
-  const segDocsRef = useRef(segmentDocsByImage);
-  useEffect(() => { segDocsRef.current = segmentDocsByImage; }, [segmentDocsByImage]);
+  useEffect(() => { segmentDocsRef.current = segmentDocsByImage; }, [segmentDocsByImage]);
 
   // chat scroll refs
   const chatBoxRefs = useRef({}); // { [imageId]: HTMLDivElement }
@@ -186,19 +180,19 @@ const HeatIslandBatchDetector = () => {
   const scrollChatToBottom = (imageId) => {
     const el = chatBoxRefs.current[imageId];
     if (el) {
-      setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100);
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 100);
     }
   };
 
-  const getCurrentItem = (imageId) => itemsRef.current.find((x) => x.id === imageId);
-
-  // Load sessionId (set by your CaptureImages page)
+  // Load sessionId from localStorage (CaptureImages sets this)
   useEffect(() => {
     const saved = localStorage.getItem('heatscape_session_id');
     setSessionId(saved || null);
   }, []);
 
-  // Live Firestore subscription for session images + attach sub-collection listeners
+  // Live Firestore subscription for session images + wire sub-collection listeners
   useEffect(() => {
     if (!sessionId) return undefined;
 
@@ -209,40 +203,54 @@ const HeatIslandBatchDetector = () => {
       (snap) => {
         const fsItems = [];
         const prevItems = itemsRef.current || [];
-        const alive = new Set();
+        const alive = new Set(); // track images that still exist this tick
 
         snap.forEach((d) => {
           const data = d.data();
           const imageId = d.id;
           alive.add(imageId);
 
-          // ensure listener for sub-collection "segments"
+          // ensure sub-collection listener for this image's segments
           if (!segmentUnsubsRef.current[imageId]) {
             const segCol = collection(db, 'sessions', sessionId, 'images', imageId, 'segments');
             segmentUnsubsRef.current[imageId] = onSnapshot(
               segCol,
               (segSnap) => {
-                const locals = [];
-                segSnap.forEach((sdoc) => locals.push(mapFsSegmentSubdocToLocal(sdoc.data())));
-                // update cache
-                setSegmentDocsByImage((prev) => ({ ...prev, [imageId]: locals }));
-                // update visible item immediately
+                const localsRaw = [];
+                segSnap.forEach((sdoc) => localsRaw.push(mapFsSegmentSubdocToLocal(sdoc.data())));
+
+                // Backfill labels from what's on the card (legacy array often has label)
+                const current = itemsRef.current.find((it) => it.id === `fs:${imageId}`);
+                const prior = Array.isArray(current?.segments) ? current.segments : [];
+                const merged = localsRaw.map((s, idx) => ({
+                  ...s,
+                  label: s.label && s.label.trim() ? s.label : (prior[idx]?.label || ''),
+                }));
+
+                // Cache + update the visible item immediately
+                setSegmentDocsByImage((prev) => ({ ...prev, [imageId]: merged }));
                 setItems((prev) =>
-                  prev.map((it) =>
-                    it.id === `fs:${imageId}` ? { ...it, segments: locals } : it
-                  )
+                  prev.map((it) => (it.id === `fs:${imageId}` ? { ...it, segments: merged } : it))
                 );
               },
               (err) => console.error('segments sub-collection listener error:', err)
             );
           }
 
-          // prefer sub-collection segments; else, fallback to array field
-          const subSegments = segDocsRef.current[imageId];
+          // legacy array segments from image doc (often contains labels)
+          const arraySegments = Array.isArray(data?.segments)
+            ? data.segments.map(mapFsSegmentToLocal)
+            : [];
+
+          // if we already have sub-docs, use them but backfill labels from the array when missing
+          const subSegments = segmentDocsRef.current[imageId];
           const segments =
             Array.isArray(subSegments) && subSegments.length > 0
-              ? subSegments
-              : (Array.isArray(data?.segments) ? data.segments.map(mapFsSegmentToLocal) : []);
+              ? subSegments.map((s, idx) => ({
+                  ...s,
+                  label: s.label && s.label.trim() ? s.label : (arraySegments[idx]?.label || ''),
+                }))
+              : arraySegments;
 
           const base = {
             id: `fs:${imageId}`,
@@ -285,20 +293,20 @@ const HeatIslandBatchDetector = () => {
           });
         });
 
-        // cleanup sub listeners for removed images
+        // clean up segment listeners for images no longer present
         Object.keys(segmentUnsubsRef.current).forEach((imgId) => {
           if (!alive.has(imgId)) {
-            try { segmentUnsubsRef.current[imgId]?.(); } catch {}
+            try { segmentUnsubsRef.current[imgId]?.(); } catch { /* ignore */ }
             delete segmentUnsubsRef.current[imgId];
             setSegmentDocsByImage((prev) => {
-              const { [imgId]: _drop, ...rest } = prev;
+              const { [imgId]: _, ...rest } = prev;
               return rest;
             });
           }
         });
 
         setItems((prev) => {
-          const manual = prev.filter((it) => it.source === 'manual' && !it.fsDocId);
+          const manual = prev.filter((it) => it.source === 'manual');
           return [...fsItems, ...manual].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         });
       },
@@ -308,10 +316,11 @@ const HeatIslandBatchDetector = () => {
       }
     );
 
+    // cleanup
     return () => {
-      try { unsubImages(); } catch {}
+      try { unsubImages(); } catch { /* ignore */ }
       Object.values(segmentUnsubsRef.current).forEach((fn) => {
-        try { if (fn) fn(); } catch {}
+        try { if (fn) fn(); } catch { /* ignore */ }
       });
       segmentUnsubsRef.current = {};
       setSegmentDocsByImage({});
@@ -320,10 +329,9 @@ const HeatIslandBatchDetector = () => {
 
   // ---------- Manual helpers ----------
   const addManualEntry = () => setItems((prev) => [newManualItem(), ...prev]);
-  const addImageRow = () => addManualEntry();
 
-  const removeImageRow = (id) => {
-    setItems((prev) => prev.filter((x) => x.id !== id));
+  const removeManualEntry = (id) => {
+    setItems((prev) => prev.filter((x) => !(x.id === id && x.source === 'manual' && !x.fsDocId)));
   };
 
   const updateManualFile = (id, file) => {
@@ -344,12 +352,13 @@ const HeatIslandBatchDetector = () => {
     reader.readAsDataURL(file);
   };
 
-  // For UI compatibility with earlier code
-  const updateImageFile = (id, file) => updateManualFile(id, file);
-
-  const addSegment = (imageId) =>
+  const addSegment = (id) =>
     setItems((prev) =>
-      prev.map((x) => (x.id === imageId ? { ...x, segments: [...x.segments, emptySegment()] } : x))
+      prev.map((x) =>
+        x.id === id
+          ? { ...x, segments: [...x.segments, { id: uid(), label: '', material: '', temp: '', humidity: '', area: '' }] }
+          : x
+      )
     );
 
   const removeSegment = (imageId, segId) =>
@@ -357,7 +366,7 @@ const HeatIslandBatchDetector = () => {
       prev.map((x) => {
         if (x.id !== imageId) return x;
         const segs = x.segments.filter((s) => s.id !== segId);
-        return { ...x, segments: segs.length ? segs : [emptySegment()] };
+        return { ...x, segments: segs.length ? segs : [{ id: uid(), label: '', material: '', temp: '', humidity: '', area: '' }] };
       })
     );
 
@@ -405,6 +414,7 @@ const HeatIslandBatchDetector = () => {
   };
 
   const persistSegments = async (imageDocRef, item) => {
+    // Persist array form (back-compat). If you also want sub-doc writes, add them here.
     await updateDoc(imageDocRef, {
       segments: segmentsToFs(item.segments),
       updatedAt: serverTimestamp(),
@@ -434,70 +444,61 @@ const HeatIslandBatchDetector = () => {
     });
   };
 
-  // ---------- Payload builders ----------
-  const buildSegmentsPayload = (segments) =>
-    segments.map((s) => ({
-      label: String(s.label || '').trim(),
-      material: String(s.material || '').toLowerCase().trim(),
-      temp: Number(s.temp),
-      humidity: Number(s.humidity),
-      area: Number(s.area),
-    }));
-
-  // For /recommend/chat endpoint
+  // ---------- Shared payload builder (fs/manual) ----------
   const buildImagePayload = (item) => {
-    const segmentsPayload = buildSegmentsPayload(item.segments);
-    const payload = { segments: segmentsPayload };
+    const segmentsPayload = toApiSegments(item.segments);
 
-    if (item.imagePreview) {
-      const dataUrl = String(item.imagePreview);
-      const [header, b64] = dataUrl.split(',', 2);
-      const mimeMatch = header?.match(/^data:(.+?);base64$/i);
-      payload.image_base64 = b64 || null;
-      payload.image_mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-    } else if (item.imageUrl) {
-      payload.image_url = item.imageUrl;
+    if (item.source === 'fs') {
+      if (!item.imageUrl) throw new Error('Missing image URL for this entry.');
+      return { segments: segmentsPayload, image_url: item.imageUrl };
     }
-    if (item.results?.summary) payload.summary = item.results.summary;
-    return payload;
+
+    const dataUrl = item.imagePreview;
+    if (!dataUrl) throw new Error('Please upload an image for this entry.');
+    const parts = String(dataUrl).split(',', 2);
+    const b64 = parts.length > 1 ? parts[1] : '';
+    let mime = 'image/jpeg';
+    const match = String(dataUrl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+    if (match) {
+      const [, mimeType] = match;
+      mime = mimeType;
+    }
+    return { segments: segmentsPayload, image_base64: b64, image_mime: mime };
   };
 
-  // ---------- API: Predict ----------
+  // ---------- Predict / Recommend ----------
+  const getCurrentItem = (id) => itemsRef.current.find((x) => x.id === id);
+
   const predictOne = async (imageId) => {
     setItems((prev) =>
-      prev.map((x) =>
-        x.id === imageId
-          ? { ...x, loadingPredict: true, error: null, warnings: [], recommendation: null }
-          : x
-      )
+      prev.map((x) => (x.id === imageId ? { ...x, loadingPredict: true, error: null, warnings: [], recommendation: null } : x))
     );
-
     try {
-      const current = getCurrentItem(imageId);
-      if (!current) return;
+      const item = getCurrentItem(imageId);
+      if (!item) return;
 
-      // Validate segments
-      const bad = current.segments.find((seg) =>
-        !seg.label ||
-        !seg.material ||
-        !isFiniteNum(toNum(seg.temp)) ||
-        !isFiniteNum(toNum(seg.humidity)) ||
-        !isFiniteNum(toNum(seg.area)) ||
-        toNum(seg.humidity) < 0 ||
-        toNum(seg.humidity) > 100 ||
-        toNum(seg.area) < 0
-      );
-      if (bad) throw new Error('Please fill all segment fields with valid numbers (Humidity 0–100; Area ≥ 0).');
-
-      // If we have a session, persist segments to Firestore first
-      let imageDocRef = null;
-      if (sessionId) {
-        imageDocRef = await ensureImageDocForItem(current);
-        await persistSegments(imageDocRef, current);
+      if (!Array.isArray(item.segments) || !item.segments.length) {
+        throw new Error('No segments found for this image.');
       }
+      const bad = item.segments.find(
+        (seg) =>
+          !seg.material ||
+          !isFiniteNum(toNum(seg.temp)) ||
+          !isFiniteNum(toNum(seg.humidity)) ||
+          !isFiniteNum(toNum(seg.area)) ||
+          toNum(seg.humidity) < 0 ||
+          toNum(seg.humidity) > 100 ||
+          toNum(seg.area) < 0
+      );
+      if (bad) throw new Error('Segment fields must be valid (Humidity 0–100; Area ≥ 0).');
 
-      const segmentsPayload = buildSegmentsPayload(current.segments);
-      const { data } = await axios.post(`${API_BASE}/predict`, { segments: segmentsPayload });
+      const imageDocRef = await ensureImageDocForItem(item);
+      await persistSegments(imageDocRef, item);
+
+      const { segments } = buildImagePayload(item);
+      const { data } = await axios.post(`${API_BASE}/predict`, { segments });
+
+      await saveDetectionToDb(imageDocRef, data);
 
       const transformed = {
         summary: {
@@ -510,16 +511,9 @@ const HeatIslandBatchDetector = () => {
         detailed_results: Array.isArray(data.detailed_predictions) ? data.detailed_predictions : [],
       };
 
-      // Save detection to Firestore if applicable
-      if (imageDocRef) {
-        try { await saveDetectionToDb(imageDocRef, data); } catch (e) { console.warn('saveDetectionToDb warn:', e); }
-      }
-
       setItems((prev) =>
         prev.map((x) =>
-          x.id === imageId
-            ? { ...x, results: transformed, warnings: data.validation_warnings || [], error: null }
-            : x
+          x.id === imageId ? { ...x, results: transformed, warnings: data.validation_warnings || [], error: null } : x
         )
       );
     } catch (err) {
@@ -530,48 +524,46 @@ const HeatIslandBatchDetector = () => {
     }
   };
 
-  // ---------- API: Recommend ----------
   const recommendOne = async (imageId) => {
-    const current = getCurrentItem(imageId);
-    if (!current) return;
+    const item = getCurrentItem(imageId);
+    if (!item) return;
 
-    if (!current.results?.summary || current.results.summary.final_decision !== 'Heat Island Detected') {
-      setItems((prev) =>
-        prev.map((x) => (x.id === imageId ? { ...x, error: 'Recommendations available only when Heat Island is detected.' } : x))
-      );
+    if (!item.results?.summary || item.results.summary.final_decision !== 'Heat Island Detected') {
+      setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, error: 'Recommendations available only when Heat Island is detected.' } : x)));
       return;
     }
 
-    setItems((prev) =>
-      prev.map((x) => (x.id === imageId ? { ...x, loadingRecommend: true, error: null } : x))
+    if (!Array.isArray(item.segments) || !item.segments.length) {
+      setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, error: 'No segments found for this image.' } : x)));
+      return;
+    }
+    const bad = item.segments.find(seg =>
+      !seg.material ||
+      !isFiniteNum(toNum(seg.temp)) ||
+      !isFiniteNum(toNum(seg.humidity)) ||
+      !isFiniteNum(toNum(seg.area)) ||
+      toNum(seg.humidity) < 0 ||
+      toNum(seg.humidity) > 100 ||
+      toNum(seg.area) < 0
     );
+    if (bad) {
+      setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, error: 'All segment fields must be valid (Material required; Humidity 0–100; Area ≥ 0).' } : x)));
+      return;
+    }
+
+    setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, loadingRecommend: true, error: null } : x)));
 
     try {
-      // Persist segments & ensure Firestore doc if session
-      let imageDocRef = null;
-      let updated = getCurrentItem(imageId);
-      if (sessionId) {
-        imageDocRef = await ensureImageDocForItem(updated);
-        await persistSegments(imageDocRef, updated);
-        updated = getCurrentItem(imageId);
-      }
+      const imageDocRef = await ensureImageDocForItem(item);
+      await persistSegments(imageDocRef, item);
 
-      // Build payload
-      const payload = buildImagePayload(updated);
+      const payload = buildImagePayload(item);
       const res = await axios.post(`${API_BASE}/recommend`, payload);
+      const text = res.data?.gemini_recommendation ?? (res.data?.message || '(No recommendation text returned)');
 
-      const text = res.data?.gemini_recommendation
-        ? res.data.gemini_recommendation
-        : (res.data?.message || '(No recommendation text returned)');
+      await saveRecommendationToDb(imageDocRef, text);
 
-      // Save recommendation text to Firestore if we have a doc
-      if (imageDocRef) {
-        try { await saveRecommendationToDb(imageDocRef, text); } catch (e) { console.warn('saveRecommendationToDb warn:', e); }
-      }
-
-      setItems((prev) =>
-        prev.map((x) => (x.id === imageId ? { ...x, recommendation: text, error: null } : x))
-      );
+      setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, recommendation: text, error: null } : x)));
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Recommendation failed';
       setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, error: msg } : x)));
@@ -580,7 +572,6 @@ const HeatIslandBatchDetector = () => {
     }
   };
 
-  // ---------- Bulk helpers ----------
   const predictAll = async () => {
     const ids = items.map((i) => i.id);
     await Promise.all(ids.map((id) => predictOne(id)));
@@ -608,7 +599,7 @@ const HeatIslandBatchDetector = () => {
       return;
     }
 
-    const bad = item.segments.find((seg) =>
+    const bad = item.segments.find(seg =>
       !seg.material ||
       !isFiniteNum(toNum(seg.temp)) ||
       !isFiniteNum(toNum(seg.humidity)) ||
@@ -642,11 +633,8 @@ const HeatIslandBatchDetector = () => {
     scrollChatToBottom(imageId);
 
     try {
-      // ensure FS doc and persisted segments if session
-      if (sessionId) {
-        const imageDocRef = await ensureImageDocForItem(item);
-        await persistSegments(imageDocRef, item);
-      }
+      const imageDocRef = await ensureImageDocForItem(item);
+      await persistSegments(imageDocRef, item);
 
       const updatedItem = getCurrentItem(imageId);
       const payload = {
@@ -708,8 +696,10 @@ const HeatIslandBatchDetector = () => {
     );
 
     setTimeout(() => {
-      const item = getCurrentItem(imageId);
-      if (item?.chatOpen) scrollChatToBottom(imageId);
+      const item = itemsRef.current.find((x) => x.id === imageId);
+      if (item?.chatOpen) {
+        scrollChatToBottom(imageId);
+      }
     }, 200);
   };
 
@@ -726,8 +716,12 @@ const HeatIslandBatchDetector = () => {
   };
 
   const pickSuggestion = (imageId, text) => {
-    setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, chatOpen: true } : x)));
-    setTimeout(() => { sendChatMessage(imageId, text); }, 50);
+    setItems((prev) =>
+      prev.map((x) => (x.id === imageId ? { ...x, chatOpen: true } : x))
+    );
+    setTimeout(() => {
+      sendChatMessage(imageId, text);
+    }, 50);
   };
 
   const formatTime = (timestamp) => {
@@ -740,77 +734,115 @@ const HeatIslandBatchDetector = () => {
   const headerSession = useMemo(
     () =>
       !sessionId ? (
-        <Alert variant="warning" className="mt-2">
+        <Alert variant="warning">
           No active session found. Create one in CaptureImages first, or add manual entries below.
         </Alert>
       ) : null,
     [sessionId]
   );
 
-  // ---------- Render ----------
   return (
     <Container className="mt-4" style={{ maxWidth: '98%' }}>
       <h1 className="text-center mb-4" style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700 }}>
         <span role="img" aria-label="fire">🔥</span> Urban Heat Island Detector <span role="img" aria-label="fire">🔥</span>
       </h1>
 
-      {globalError && <Alert variant="danger">{globalError}</Alert>}
       {headerSession}
 
-      <div className="d-flex gap-2 mb-3">
-        <Button variant="outline-secondary" onClick={addImageRow}>+ Add Image</Button>
-        <Button variant="success" onClick={predictAll}>Run Detection for All</Button>
-        <Button variant="primary" onClick={recommendAllDetected}>Get Recommendations for Detected</Button>
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        <Button variant="outline-secondary" onClick={addManualEntry}>+ Add Manual Entry</Button>
+        <Button variant="success" onClick={predictAll} disabled={!items.length}>
+          Run Detection for All
+        </Button>
+        <Button variant="primary" onClick={recommendAllDetected} disabled={!items.length}>
+          Get Recommendations for Detected
+        </Button>
       </div>
+
+      {!items.length && (
+        <Alert variant="info">No images yet. Add a manual entry or wait for images to sync from the active session.</Alert>
+      )}
 
       {items.map((item) => (
         <Card className="mb-4" key={item.id}>
           <Card.Header className="d-flex justify-content-between align-items-center">
             <div>
-              <strong>Image Entry</strong>{' '}
-              {item.results?.summary?.final_decision === 'Heat Island Detected' && (
-                <Badge bg="danger" className="ms-2">Detected</Badge>
-              )}
-              {item.results?.summary?.final_decision === 'No Heat Island Detected' && (
-                <Badge bg="success" className="ms-2">Not Detected</Badge>
-              )}
+              <strong>{item.source === 'manual' ? 'Manual Image' : 'Session Image'}</strong>{' '}
+              {item.results?.summary?.final_decision === 'Heat Island Detected' && <Badge bg="danger" className="ms-2">Detected</Badge>}
+              {item.results?.summary?.final_decision === 'No Heat Island Detected' && <Badge bg="success" className="ms-2">Not Detected</Badge>}
             </div>
             <div className="d-flex gap-2">
+              {item.source === 'manual' && !item.fsDocId && (
+                <Button size="sm" variant="outline-danger" onClick={() => removeManualEntry(item.id)} title="Discard this manual entry">
+                  Remove Entry
+                </Button>
+              )}
               <Button size="sm" variant="outline-success" onClick={() => predictOne(item.id)} disabled={item.loadingPredict}>
                 {item.loadingPredict ? 'Analyzing...' : 'Detect'}
               </Button>
-              <Button size="sm" variant="outline-primary" onClick={() => recommendOne(item.id)} disabled={item.loadingRecommend}>
+              <Button
+                size="sm"
+                variant="outline-primary"
+                onClick={() => recommendOne(item.id)}
+                disabled={
+                  item.loadingRecommend ||
+                  item.results?.summary?.final_decision !== 'Heat Island Detected' ||
+                  !Array.isArray(item.segments) ||
+                  !item.segments.length ||
+                  item.segments.some(seg =>
+                    !seg.material ||
+                    !isFiniteNum(toNum(seg.temp)) ||
+                    !isFiniteNum(toNum(seg.humidity)) ||
+                    !isFiniteNum(toNum(seg.area)) ||
+                    toNum(seg.humidity) < 0 ||
+                    toNum(seg.humidity) > 100 ||
+                    toNum(seg.area) < 0
+                  )
+                }
+                title={
+                  item.results?.summary?.final_decision !== 'Heat Island Detected'
+                    ? 'Run Detect first; must be Detected'
+                    : (!Array.isArray(item.segments) || !item.segments.length
+                        ? 'Add at least one valid segment'
+                        : '')
+                }
+              >
                 {item.loadingRecommend ? 'Recommending...' : 'Recommend'}
               </Button>
-              <Button size="sm" variant="outline-danger" onClick={() => removeImageRow(item.id)}>Remove</Button>
             </div>
           </Card.Header>
 
           <Card.Body>
-            {/* Image upload & preview */}
-            <Row className="mb-3">
-              <Col md={6}>
-                <Form.Group>
-                  <Form.Label>Upload Urban Area Image (JPG/PNG/WebP)</Form.Label>
+            {/* Image */}
+            {item.source === 'manual' ? (
+              <>
+                <Form.Group className="mb-3">
+                  <Form.Label>Upload Image (JPG/PNG/WebP)</Form.Label>
                   <Form.Control
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
-                    onChange={(e) => updateImageFile(item.id, e.target.files?.[0] || null)}
+                    onChange={(e) => updateManualFile(item.id, e.target.files?.[0] || null)}
                   />
                 </Form.Group>
-                {(item.imagePreview || item.imageUrl) && (
-                  <div className="mt-3">
-                    <img
-                      src={item.imagePreview || item.imageUrl}
-                      alt="preview"
-                      style={{ maxWidth: '360px', borderRadius: 8, border: '1px solid #e5e7eb' }}
-                    />
+                {item.imagePreview && (
+                  <div className="mb-3">
+                    <img src={item.imagePreview} alt="manual" style={{ maxWidth: '360px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
                   </div>
                 )}
-              </Col>
-            </Row>
+              </>
+            ) : (
+              <>
+                {item.imageUrl ? (
+                  <div className="mb-3">
+                    <img src={item.imageUrl} alt="session" style={{ maxWidth: '360px', borderRadius: 8, border: '1px solid #e5e7eb' }} />
+                  </div>
+                ) : (
+                  <Alert variant="secondary">No imageUrl on this session image.</Alert>
+                )}
+              </>
+            )}
 
-            {/* Segments table */}
+            {/* Segments */}
             <Table striped bordered hover responsive className="mb-3">
               <thead>
                 <tr>
@@ -819,12 +851,12 @@ const HeatIslandBatchDetector = () => {
                   <th>Material</th>
                   <th>Temp (°C)</th>
                   <th>Humidity (%)</th>
-                  <th>Area (m²)</th>
+                  <th>Area (sq.m)</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {item.segments && item.segments.length ? (
+                {item.segments.length ? (
                   item.segments.map((seg) => (
                     <tr key={seg.id}>
                       <td style={{ width: 68 }}>
@@ -837,42 +869,23 @@ const HeatIslandBatchDetector = () => {
                         ) : null}
                       </td>
                       <td style={{ minWidth: 160 }}>
-                        <Form.Control
-                          type="text"
-                          value={seg.label}
-                          placeholder="building / road / sidewalk"
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'label', e.target.value)}
-                        />
+                        <Form.Control type="text" value={seg.label} placeholder="building / road / sidewalk"
+                          onChange={(e) => updateSegmentField(item.id, seg.id, 'label', e.target.value)} />
                       </td>
                       <td style={{ minWidth: 160 }}>
-                        <Form.Select
-                          value={seg.material}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'material', e.target.value)}
-                        >
+                        <Form.Select value={seg.material} onChange={(e) => updateSegmentField(item.id, seg.id, 'material', e.target.value)}>
                           <option value="">Select Material</option>
                           {materialOptions.map((m) => (<option key={m} value={m}>{m}</option>))}
                         </Form.Select>
                       </td>
                       <td style={{ minWidth: 120 }}>
-                        <Form.Control
-                          type="number"
-                          value={seg.temp}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'temp', e.target.value)}
-                        />
+                        <Form.Control type="number" value={seg.temp} onChange={(e) => updateSegmentField(item.id, seg.id, 'temp', e.target.value)} />
                       </td>
                       <td style={{ minWidth: 120 }}>
-                        <Form.Control
-                          type="number"
-                          value={seg.humidity}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'humidity', e.target.value)}
-                        />
+                        <Form.Control type="number" value={seg.humidity} onChange={(e) => updateSegmentField(item.id, seg.id, 'humidity', e.target.value)} />
                       </td>
                       <td style={{ minWidth: 140 }}>
-                        <Form.Control
-                          type="number"
-                          value={seg.area}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)}
-                        />
+                        <Form.Control type="number" value={seg.area} onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)} />
                       </td>
                       <td>
                         <Button variant="outline-danger" size="sm" onClick={() => removeSegment(item.id, seg.id)}>Remove</Button>
@@ -897,9 +910,7 @@ const HeatIslandBatchDetector = () => {
             {item.warnings?.length > 0 && (
               <Alert variant="warning" className="mt-3">
                 <strong>Validation warnings:</strong>
-                <ul className="mb-0">
-                  {item.warnings.map((w) => <li key={`${item.id}-${w}`}>{w}</li>)}
-                </ul>
+                <ul className="mb-0">{item.warnings.map((w) => <li key={`${item.id}-${w}`}>{w}</li>)}</ul>
               </Alert>
             )}
 
@@ -907,11 +918,11 @@ const HeatIslandBatchDetector = () => {
               <Row className="mt-3">
                 <Col md={6}>
                   <Card className="mb-3">
-                    <Card.Header>Location Details</Card.Header>
+                    <Card.Header>Per-Segment Results</Card.Header>
                     <Card.Body>
-                      {Array.isArray(item.results.detailed_results) && item.results.detailed_results.map((det, idx) => {
+                      {Array.isArray(item.results.detailed_results) && item.results.detailed_results.map((det) => {
                         const flag = det.heat_island === 'Yes';
-                        const key = `${item.id}-det-${det.location || det.material || det.label || idx}`;
+                        const key = `${item.id}-det-${det.location || det.material || det.label || Math.random()}`;
                         return (
                           <div key={key} className={`mb-2 ${flag ? 'text-danger' : 'text-success'}`}>
                             <strong>{det.location || '(segment)'}</strong>
@@ -933,10 +944,7 @@ const HeatIslandBatchDetector = () => {
                       <div className="d-flex justify-content-between mb-2"><span>🌿 Vegetation Coverage:</span><strong>{item.results.summary.vegetation_percent}%</strong></div>
                       <div className="d-flex justify-content-between mb-2"><span>🌡 Avg Temperature:</span><strong>{item.results.summary.avg_temperature}°C</strong></div>
                       <div className="d-flex justify-content-between mb-2"><span>💧 Avg Humidity:</span><strong>{item.results.summary.avg_humidity}%</strong></div>
-                      <Alert
-                        variant={item.results.summary.final_decision === 'Heat Island Detected' ? 'danger' : 'success'}
-                        className="mt-3"
-                      >
+                      <Alert variant={item.results.summary.final_decision === 'Heat Island Detected' ? 'danger' : 'success'} className="mt-3">
                         <strong>Final Decision:</strong> {item.results.summary.final_decision}
                       </Alert>
                     </Card.Body>
@@ -945,20 +953,12 @@ const HeatIslandBatchDetector = () => {
               </Row>
             )}
 
-            {/* Recommendation loading */}
-            {item.loadingRecommend && (
-              <div className="text-center my-3">
-                <div className="spinner-border text-warning" role="status" />
-                <p className="mt-2">Generating mitigation recommendations...</p>
-              </div>
-            )}
-
             {/* Enhanced Recommendations + Chat */}
             {item.recommendation && !item.loadingRecommend && (
               <Card className="mt-2" style={{ boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}>
-                <Card.Header
+                <Card.Header 
                   className="d-flex justify-content-between align-items-center"
-                  style={{
+                  style={{ 
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     color: 'white',
                     borderBottom: 'none'
@@ -968,10 +968,10 @@ const HeatIslandBatchDetector = () => {
                     <span role="img" aria-label="recommendations" className="me-2">💡</span>
                     <strong>Mitigation Recommendations</strong>
                   </div>
-                  <Button
-                    variant={item.chatOpen ? 'light' : 'outline-light'}
-                    size="sm"
-                    onClick={() => toggleChat(item.id)}
+                  <Button 
+                    variant={item.chatOpen ? "light" : "outline-light"} 
+                    size="sm" 
+                    onClick={() => toggleChat(item.id)} 
                     className="d-flex align-items-center"
                     style={{ fontWeight: '500' }}
                   >
@@ -979,26 +979,23 @@ const HeatIslandBatchDetector = () => {
                     {item.chatOpen ? 'Hide Chat' : 'Ask Questions'}
                   </Button>
                 </Card.Header>
-
                 <Card.Body style={{ background: '#f8fafc' }}>
-                  <div
+                  <div 
                     className="p-3 rounded mb-3"
-                    style={{
+                    style={{ 
                       background: 'white',
                       border: '1px solid #e2e8f0',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                     }}
                   >
-                    <pre
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        fontFamily: 'system-ui, -apple-system, sans-serif',
-                        fontSize: '14px',
-                        lineHeight: '1.6',
-                        margin: 0,
-                        color: '#2d3748'
-                      }}
-                    >
+                    <pre style={{ 
+                      whiteSpace: 'pre-wrap', 
+                      fontFamily: 'system-ui, -apple-system, sans-serif',
+                      fontSize: '14px',
+                      lineHeight: '1.6',
+                      margin: 0,
+                      color: '#2d3748'
+                    }}>
                       {item.recommendation}
                     </pre>
                   </div>
@@ -1009,10 +1006,10 @@ const HeatIslandBatchDetector = () => {
                       <div className="mb-3">
                         <div className="d-flex align-items-center mb-2">
                           <span className="me-2 text-muted small fw-bold">💡 Quick Questions:</span>
-                          <Button
-                            size="sm"
-                            variant="outline-secondary"
-                            onClick={() => refreshChatSuggestions(item.id)}
+                          <Button 
+                            size="sm" 
+                            variant="outline-secondary" 
+                            onClick={() => refreshChatSuggestions(item.id)} 
                             title="Refresh suggestions"
                             style={{ fontSize: '12px', padding: '2px 8px' }}
                           >
@@ -1020,9 +1017,9 @@ const HeatIslandBatchDetector = () => {
                           </Button>
                         </div>
                         <div className="d-flex flex-wrap gap-2">
-                          {item.chatSuggestions.map((q, i) => (
+                          {item.chatSuggestions.map((q) => (
                             <Button
-                              key={`${item.id}-sugg-${i}`}
+                              key={`${item.id}-sugg-${q}`}
                               size="sm"
                               variant="outline-primary"
                               className="text-start"
@@ -1047,9 +1044,9 @@ const HeatIslandBatchDetector = () => {
 
                       {/* Chat transcript */}
                       <Card style={{ border: '2px solid #e2e8f0' }}>
-                        <Card.Header
+                        <Card.Header 
                           className="py-2"
-                          style={{
+                          style={{ 
                             background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
                             color: 'white',
                             fontSize: '14px',
@@ -1068,9 +1065,9 @@ const HeatIslandBatchDetector = () => {
                         <div
                           ref={(el) => setChatBoxRef(item.id, el)}
                           className="p-3"
-                          style={{
-                            maxHeight: '400px',
-                            overflowY: 'auto',
+                          style={{ 
+                            maxHeight: '400px', 
+                            overflowY: 'auto', 
                             background: 'linear-gradient(to bottom, #f1f5f9, #ffffff)',
                             minHeight: '200px'
                           }}
@@ -1083,10 +1080,11 @@ const HeatIslandBatchDetector = () => {
                             </div>
                           )}
 
-                          {item.chatMessages.map((m, idx) => {
+                          {item.chatMessages.map((m) => {
                             const isUser = m.role === 'user';
+                            const k = `${item.id}-msg-${m.timestamp ?? `${m.role}-${(m.text || '').length}`}`;
                             return (
-                              <div key={`${item.id}-chat-${m.timestamp ?? idx}`} className="d-flex w-100 mb-3 align-items-start">
+                              <div key={k} className="d-flex w-100 mb-3 align-items-start">
                                 {!isUser && <div className="me-2" style={{ fontSize: 16 }}>🤖</div>}
                                 <div className={isUser ? 'ms-auto' : ''} style={{ maxWidth: '80%' }}>
                                   <div
@@ -1122,11 +1120,11 @@ const HeatIslandBatchDetector = () => {
 
                           {item.chatLoading && (
                             <div className="d-flex justify-content-start mb-3">
-                              <div
+                              <div 
                                 className="p-3 rounded-3"
-                                style={{
-                                  maxWidth: '80%',
-                                  background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+                                style={{ 
+                                  maxWidth: '80%', 
+                                  background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', 
                                   border: '1px solid #cbd5e1',
                                   boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
                                 }}
@@ -1164,7 +1162,7 @@ const HeatIslandBatchDetector = () => {
                                   }
                                 }}
                                 disabled={item.chatLoading}
-                                style={{
+                                style={{ 
                                   resize: 'none',
                                   border: '2px solid #e2e8f0',
                                   borderRadius: '12px',
@@ -1175,11 +1173,11 @@ const HeatIslandBatchDetector = () => {
                                 Press Enter to send, Shift+Enter for new line
                               </div>
                             </div>
-                            <Button
-                              variant="primary"
-                              onClick={() => sendChatMessage(item.id)}
+                            <Button 
+                              variant="primary" 
+                              onClick={() => sendChatMessage(item.id)} 
                               disabled={item.chatLoading || !String(item.chatInput || '').trim()}
-                              style={{
+                              style={{ 
                                 borderRadius: '12px',
                                 padding: '8px 16px',
                                 fontWeight: '600',
@@ -1206,12 +1204,30 @@ const HeatIslandBatchDetector = () => {
               </Card>
             )}
 
-            {item.error && <Alert variant="danger" className="mt-3">{item.error}</Alert>}
+            {item.error && (
+              <Alert variant="danger" className="mt-3">
+                <div className="d-flex align-items-center">
+                  <span role="img" aria-label="error" className="me-2">⚠️</span>
+                  <strong>Error:</strong>
+                </div>
+                <div className="mt-1">{item.error}</div>
+              </Alert>
+            )}
           </Card.Body>
         </Card>
       ))}
+
+      {globalError && (
+        <Alert variant="danger" className="mt-3">
+          <div className="d-flex align-items-center">
+            <span role="img" aria-label="error" className="me-2">⚠️</span>
+            <strong>System Error:</strong>
+          </div>
+          <div className="mt-1">{globalError}</div>
+        </Alert>
+      )}
     </Container>
   );
 };
 
-export default HeatIslandBatchDetector;
+export default HeatIslandDetector;

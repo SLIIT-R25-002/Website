@@ -15,11 +15,12 @@ import {
 
 // Import Firebase
 import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { getStorage, ref, getDownloadURL } from "firebase/storage";
 import { db } from "../../../firebase";
 
 // API Configuration
 const API_CONFIG = {
-  BASE_URL: process.env.REACT_APP_API_BASE_URL || "http://localhost:5000",
+  BASE_URL: "https://e7da4d3c4451.ngrok-free.app",
   ENDPOINTS: {
     ANALYZE: "/analyze",
     CALCULATE_AREA: "/calculate_area",
@@ -52,6 +53,30 @@ const Segment = () => {
 
   // Backend API base URL - update this to your actual backend URL
   const API_BASE_URL = API_CONFIG.BASE_URL;
+
+  // Helper function to get image blob from Firebase Storage using storage path
+  const getImageBlobFromStorage = async (imagePath) => {
+    try {
+      const storage = getStorage();
+      const imageRef = ref(storage, imagePath);
+      const url = await getDownloadURL(imageRef);
+
+      console.log("Firebase Storage URL:", url);
+
+      // Fetch the image using the download URL
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      console.log("Downloaded blob:", blob.size, "bytes");
+      return blob;
+    } catch (error) {
+      console.error("Error getting image from Firebase Storage:", error);
+      throw error;
+    }
+  };
 
   const startAnalysis = async () => {
     setCurrentStep("processing");
@@ -118,15 +143,38 @@ const Segment = () => {
       setProgress(25);
 
       // Call backend API for analysis
-      setProcessingStatus("1/4: Sending image to backend for analysis...");
+      setProcessingStatus("1/4: Getting image from Firebase Storage...");
 
-      // Download the image as blob for form data
-      const imageResponse = await fetch(latestImageData.imageUrl);
-      const imageBlob = await imageResponse.blob();
+      // Extract storage path from imageUrl
+      let imagePath;
+      if (latestImageData.imageUrl.includes("firebasestorage.googleapis.com")) {
+        // If it's a Firebase Storage URL, extract the path
+        const url = new URL(latestImageData.imageUrl);
+
+        // For Firebase Storage URLs, the path is in pathname after /o/
+        const pathMatch = url.pathname.match(/\/o\/(.+)$/);
+
+        if (pathMatch) {
+          imagePath = decodeURIComponent(pathMatch[1]);
+        } else {
+          console.error("Firebase URL format not recognized:", url.pathname);
+          throw new Error(
+            `Could not extract storage path from Firebase URL: ${url.pathname}`
+          );
+        }
+      } else {
+        // If it's a direct path, use it as is
+        imagePath = latestImageData.imageUrl;
+      }
+
+      console.log("Using storage path:", imagePath);
+
+      // Download the image as blob using Firebase Storage
+      const imageBlob = await getImageBlobFromStorage(imagePath);
 
       // Create FormData for backend API
       const formData = new FormData();
-      formData.append("image", imageBlob, imageFromFirestore.name);
+      formData.append("file", imageBlob, imageFromFirestore.name);
 
       setProcessingStatus("2/4: Analyzing image with AI model...");
       setProgress(50);
@@ -136,6 +184,9 @@ const Segment = () => {
         `${API_BASE_URL}${API_CONFIG.ENDPOINTS.ANALYZE}`,
         {
           method: "POST",
+          headers: {
+            "ngrok-skip-browser-warning": "true", // Add this for ngrok
+          },
           body: formData,
         }
       );
@@ -231,6 +282,7 @@ const Segment = () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true", // Add this for ngrok
           },
           body: JSON.stringify(requestBody),
         }

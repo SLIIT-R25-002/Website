@@ -154,26 +154,72 @@ const CaptureImages = () => {
 
   // Listen for images in real-time when session is active
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) return undefined;
+
+    let segmentUnsubscribers = [];
 
     const unsub = onSnapshot(
       collection(db, "sessions", sessionId, "images"),
       (snapshot) => {
+        // Clean up previous segment listeners
+        segmentUnsubscribers.forEach(unsubFn => unsubFn());
+        segmentUnsubscribers = [];
+
         const imgs = [];
-        snapshot.forEach((documment) => imgs.push({ id: documment.id, ...documment.data() }));
-        // Sort by timestamp (newest first) - handle both Firestore and JS timestamps
-        imgs.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
-        console.log(imgs);
         
-        setImages(imgs);
+        snapshot.forEach((documment) => {
+          const imageData = { id: documment.id, ...documment.data() };
+          imageData.segments = []; // Initialize empty segments array
+          imgs.push(imageData);
+
+          // Set up real-time listener for segments of this image
+          const segmentUnsub = onSnapshot(
+            collection(db, "sessions", sessionId, "images", documment.id, "segments"),
+            (segmentsSnapshot) => {
+              const segments = [];
+              segmentsSnapshot.forEach((segDoc) => {
+                segments.push({ id: segDoc.id, ...segDoc.data() });
+              });
+
+              // Update the segments for this specific image
+              setImages(prevImages => {
+                const updatedImages = prevImages.map(img => {
+                  if (img.id === documment.id) {
+                    return { ...img, segments };
+                  }
+                  return img;
+                });
+                
+                // Sort by timestamp (newest first)
+                updatedImages.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+                console.log("Images with updated segments:", updatedImages);
+                return updatedImages;
+              });
+            },
+            (segError) => {
+              console.error(`Error listening to segments for image ${documment.id}:`, segError);
+            }
+          );
+
+          segmentUnsubscribers.push(segmentUnsub);
+        });
+
+        // Initial set of images (segments will be updated by their individual listeners)
+        const sortedImages = imgs.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+        console.log("Initial images:", sortedImages);
+        setImages(sortedImages);
       },
       (error) => {
         console.error("Error listening to images:", error);
         message.error("Failed to load images");
       }
     );
-    // eslint-disable-next-line consistent-return
-    return () => unsub();
+
+    // Cleanup function
+    return () => {
+      unsub();
+      segmentUnsubscribers.forEach(unsubFn => unsubFn());
+    };
   }, [sessionId]);
 
   return (

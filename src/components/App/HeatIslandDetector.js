@@ -1,5 +1,5 @@
 // HeatIslandDetector.js
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {  useEffect, useMemo, useRef, useState } from 'react';
 import { Container, Row, Col, Form, Button, Table, Alert, Card, Badge } from 'react-bootstrap';
 import axios from 'axios';
 
@@ -23,9 +23,18 @@ const materialOptions = [
   'asphalt','concrete','grass','metal','plastic','rubber','sand','soil','solar panel','steel','water','artificial turf','glass'
 ];
 
+
+
+
+
+
 // Firestore segment (array field on image doc) -> local UI segment
 const mapFsSegmentToLocal = (seg) => {
-  const rawMaterial = (seg?.material || '').toLowerCase();
+  
+  let rawMaterial = '';
+  if (typeof seg?.material === 'string') {
+    rawMaterial = seg.material.toLowerCase();
+  }
   return {
     id: uid(),
     label: String(seg?.label ?? ''),
@@ -37,18 +46,32 @@ const mapFsSegmentToLocal = (seg) => {
 };
 
 // Firestore segment (sub-collection doc) -> local UI segment
+// Firestore segment (sub-collection doc) -> local UI segment
 const mapFsSegmentSubdocToLocal = (seg) => {
-  const rawMaterial = (seg?.material || '').toLowerCase();
+  // Accept either `material` or `materials` coming as array or string
+  console.log("[mapFsSegmentSubdocToLocal] segment from sub-collection:", seg);
+  const rawList = Array.isArray(seg?.materials)
+    ? seg.materials
+    : (Array.isArray(seg?.material) ? seg.material : [seg?.material]).filter(Boolean);
+
+  const candidates = rawList
+    .map((m) => String(m || '').toLowerCase().trim())
+    .filter((m) => materialOptions.includes(m));
+
+  const chosen = candidates[0] || '';
+
   return {
     id: uid(),
     label: String(seg?.label ?? ''),
-    material: materialOptions.includes(rawMaterial) ? rawMaterial : '',
+    material: chosen,                 // prefill the first valid guess
+    materialCandidates: candidates,   // keep the other options for quick-pick UI
     temp: Number(seg?.temperature ?? 0),
     humidity: Number(seg?.humidity ?? 0),
     area: Number(seg?.surfaceArea ?? 0),
     segmentImageUrl: String(seg?.segmentImageUrl ?? ''),
   };
 };
+
 
 // New manual item template
 const newManualItem = () => ({
@@ -83,7 +106,7 @@ const toApiSegments = (segments) =>
     const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
     return {
       label: String(s.label || '').trim(),
-      material: String(s.material || '').toLowerCase().trim(),
+      material: String(s.material || '')?.toLowerCase().trim(),
       temp: num(s.temp),
       humidity: num(s.humidity),
       area: num(s.area),
@@ -94,7 +117,7 @@ const toApiSegments = (segments) =>
 const segmentsToFs = (segments) =>
   segments.map((s) => ({
     label: String(s.label || '').trim() || null,
-    material: String(s.material || '').toLowerCase() || null,
+    material: String(s.material || '')?.toLowerCase() || null,
     temperature: Number(s.temp),
     humidity: Number(s.humidity),
     surfaceArea: Number(s.area),
@@ -127,7 +150,7 @@ const uniq = (arr) => Array.from(new Set(arr));
 const getMaterialsSet = (item) =>
   new Set(
     (item?.segments || [])
-      .map((s) => String(s.material || '').trim().toLowerCase())
+      .map((s) => String(s.material || '')?.trim().toLowerCase())
       .filter(Boolean)
   );
 
@@ -185,6 +208,11 @@ const HeatIslandDetector = () => {
       }, 100);
     }
   };
+
+  useEffect(() => {
+  getMaterialsSet()
+  console.log( getMaterialsSet())
+}, []);
 
   // Load sessionId from localStorage (CaptureImages sets this)
   useEffect(() => {

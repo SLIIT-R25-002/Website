@@ -426,11 +426,12 @@ const CaptureImages = () => {
                 </Col>
 
                 <Col xs={24} sm={8} style={{ textAlign: "right" }}>
-                  <Space>
+                  <Space direction="vertical">
                     <Button
                       onClick={handleShowSessionsList}
                       icon={<UnorderedListOutlined />}
                       size="small"
+                      style={{ width: '100%' }}
                     >
                       All Sessions
                     </Button>
@@ -438,6 +439,7 @@ const CaptureImages = () => {
                       onClick={handleNewSession}
                       icon={<ReloadOutlined />}
                       size="small"
+                      style={{ width: '100%' }}
                     >
                       New Session
                     </Button>

@@ -53,7 +53,8 @@ function ModelViewer() {
     //     Material_type: "Concrete"
     // };
 
-    const API_KEY = '229b7c42c71d41f99ae44120252003';
+    const UhiSimuBaseUrl = process.env.REACT_APP_UHI_SIMULATION_BACKEND_URL || 'http://localhost:4200';
+    const weartherAPIKey = process.env.REACT_APP_WEATHER_API_KEY || '229b7c42c71d41f99ae44120252003';
 
     const inputGroupStyle = { display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 };
     const fileInputGroupStyle = { display: 'flex', flexDirection: 'column', gap: '4px' };
@@ -198,7 +199,7 @@ function ModelViewer() {
         const formData = new FormData();
         formData.append('file', blob, 'simulation_input.csv');
 
-        fetch('http://localhost:4200/upload-simulation-input', {
+        fetch(`${UhiSimuBaseUrl}/upload-simulation-input`, {
             method: 'POST',
             body: formData,
         })
@@ -245,7 +246,7 @@ function ModelViewer() {
                 const base64Image = dataURL.split(',')[1];
 
                 // ✅ 1. SEND TO BACKEND
-                fetch('http://localhost:4200/get_recommendation', {
+                fetch(`${UhiSimuBaseUrl}/get_recommendation`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -369,7 +370,7 @@ function ModelViewer() {
         let windKmph = 10;
         try {
             const res = await fetch(
-                `http://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
+                `http://api.weatherapi.com/v1/history.json?key=${weartherAPIKey}&q=${lat},${lon}&dt=${date}`
             );
             const data = await res.json();
             const hourData = data.forecast.forecastday[0].hour.find(h =>
@@ -436,7 +437,7 @@ function ModelViewer() {
         let wHumidity = 20;
         try {
             const res = await fetch(
-                `http://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
+                `http://api.weatherapi.com/v1/history.json?key=${weartherAPIKey}&q=${lat},${lon}&dt=${date}`
             );
             const data = await res.json();
             const hourData = data.forecast.forecastday[0].hour.find(h =>

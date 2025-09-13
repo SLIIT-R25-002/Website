@@ -11,14 +11,23 @@ import {
   LoadingOutlined,
   PictureOutlined,
   SyncOutlined,
+  SaveOutlined,
+  CheckCircleOutlined,
 } from "@ant-design/icons";
 // Import Firebase
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
-import { getStorage, ref, getDownloadURL } from "firebase/storage";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { getStorage, ref, getDownloadURL, uploadBytes } from "firebase/storage";
 import { db } from "../../../firebase";
 // API Configuration
 const API_CONFIG = {
-  BASE_URL: "https://5dc3a639863e.ngrok-free.app",
+  BASE_URL: "https://da1b6f385d10.ngrok-free.app",
   ENDPOINTS: {
     ANALYZE: "/analyze",
     CALCULATE_AREA: "/calculate_area",
@@ -36,6 +45,11 @@ const Segment = () => {
   const [progress, setProgress] = useState(0);
   const [availableImages, setAvailableImages] = useState([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  // Save functionality state
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+  const [segmentsSaved, setSegmentsSaved] = useState(false);
   const COLOR_PALETTE = [
     "#FF6B6B",
     "#4ECDC4",
@@ -142,40 +156,49 @@ const Segment = () => {
       console.log("Analysis response:", analysisData);
       console.log("Response structure check:", {
         hasResult: !!analysisData.result,
-        hasDetectedClasses: !!(analysisData.result && analysisData.result.detected_classes),
+        hasDetectedClasses: !!(
+          analysisData.result && analysisData.result.detected_classes
+        ),
         hasMasks: !!(analysisData.result && analysisData.result.masks),
-        detectedClassesType: analysisData.result?.detected_classes ? typeof analysisData.result.detected_classes : 'undefined',
-        masksType: analysisData.result?.masks ? typeof analysisData.result.masks : 'undefined'
+        detectedClassesType: analysisData.result?.detected_classes
+          ? typeof analysisData.result.detected_classes
+          : "undefined",
+        masksType: analysisData.result?.masks
+          ? typeof analysisData.result.masks
+          : "undefined",
       });
-      
+
       // Validate the response structure
       if (!analysisData || !analysisData.result) {
         throw new Error("Invalid response format: missing result data");
       }
-      
+
       setProcessingStatus("3/4: Processing segmentation results...");
       setProgress(75);
-      
+
       // Transform backend response to frontend format with defensive programming
       const transformedResults = {
         detected_classes: (analysisData.result.detected_classes || []).map(
-          (cls) => typeof cls === 'string' ? cls : (cls.name || 'Unknown')
+          (cls) => (typeof cls === "string" ? cls : cls.name || "Unknown")
         ),
         masks: [],
         material_breakdown: analysisData.result.material_breakdown || {},
       };
       // Process masks from backend response - new simplified format with error handling
       let colorIndex = 0;
-      if (analysisData.result.masks && typeof analysisData.result.masks === 'object') {
+      if (
+        analysisData.result.masks &&
+        typeof analysisData.result.masks === "object"
+      ) {
         Object.entries(analysisData.result.masks).forEach(
           ([className, classData]) => {
             if (classData && classData.mask) {
               transformedResults.masks.push({
-                material: className || 'Unknown',
+                material: className || "Unknown",
                 color: COLOR_PALETTE[colorIndex % COLOR_PALETTE.length],
                 mask_base64: classData.mask,
-                className: className || 'Unknown',
-                materialType: className || 'Unknown',
+                className: className || "Unknown",
+                materialType: className || "Unknown",
               });
               colorIndex += 1;
             }
@@ -234,12 +257,12 @@ const Segment = () => {
       const latestImageData = latestImageDoc.data();
       console.log("Latest image data:", latestImageData);
       // Prepare all images data for potential selection
-      const allImages = querySnapshot.docs.map((doc, index) => {
-        const data = doc.data();
+      const allImages = querySnapshot.docs.map((docSnapshot, index) => {
+        const data = docSnapshot.data();
         return {
-          id: doc.id,
+          id: docSnapshot.id,
           url: data.imageUrl,
-          name: `image_${doc.id}.jpg`,
+          name: `image_${docSnapshot.id}.jpg`,
           timestamp: data.timestamp,
           data,
           index,
@@ -336,6 +359,215 @@ const Segment = () => {
     } catch (error) {
       console.error("Error creating mask overlay:", error);
       return null;
+    }
+  };
+
+  // Helper function to create colored mask from base64
+  const createColoredMask = (maskBase64, color) =>
+    new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Draw the original mask
+        ctx.drawImage(img, 0, 0);
+        
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const { data } = imageData;
+        
+        // Convert hex color to RGB
+        const hexToRgb = (hex) => {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+          return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+          } : null;
+        };
+        
+        const rgb = hexToRgb(color);
+        
+        // Process each pixel
+        for (let i = 0; i < data.length; i += 4) {
+          const alpha = data[i + 3];
+          
+          // If pixel is not transparent (mask area)
+          if (alpha > 128) {
+            // Apply the segment color
+            data[i] = rgb.r;     // Red
+            data[i + 1] = rgb.g; // Green  
+            data[i + 2] = rgb.b; // Blue
+            data[i + 3] = 255;   // Alpha
+          } else {
+            // Make background black
+            data[i] = 0;         // Red
+            data[i + 1] = 0;     // Green
+            data[i + 2] = 0;     // Blue
+            data[i + 3] = 255;   // Alpha (opaque black)
+          }
+        }
+        
+        // Put the modified image data back
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Convert canvas to base64
+        const coloredBase64 = canvas.toDataURL('image/png').split(',')[1];
+        resolve(coloredBase64);
+      };
+      
+      img.src = `data:image/png;base64,${maskBase64}`;
+    });
+
+  // Helper function to convert base64 to blob
+  const base64ToBlob = (base64Data) => {
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i += 1) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: "image/png" });
+  };
+
+  // Function to upload mask image to Firebase Storage
+  const uploadMaskImage = async (maskBase64, segmentId, material, color) => {
+    try {
+      const storage = getStorage();
+      const sessionId = localStorage.getItem("heatscape_session_id");
+      const timestamp = new Date().toISOString().split("T")[0];
+      const fileName = `mask_${material}_${segmentId}_${timestamp}.png`;
+      const storagePath = `sessions/${sessionId}/images/${uploadedImage.id}/segments/${fileName}`;
+
+      // Create colored mask with segment color and black background
+      const coloredMaskBase64 = await createColoredMask(maskBase64, color);
+      
+      // Convert base64 to blob
+      const blob = base64ToBlob(coloredMaskBase64);
+
+      // Upload to Firebase Storage
+      const storageRef = ref(storage, storagePath);
+      await uploadBytes(storageRef, blob);
+
+      // Get download URL
+      const downloadURL = await getDownloadURL(storageRef);
+      return downloadURL;
+    } catch (error) {
+      console.error("Error uploading mask image:", error);
+      throw error;
+    }
+  };
+
+  // Function to save segment data to Firestore
+  const saveSegmentData = async (segment, maskImageURL, surfaceArea) => {
+    try {
+      const sessionId = localStorage.getItem("heatscape_session_id");
+      if (!sessionId) {
+        throw new Error("No active session found");
+      }
+
+      const segmentData = {
+        sessionId,
+        originalImageId: uploadedImage?.id || null,
+        originalImageName: uploadedImage?.name || null,
+        originalImageURL: uploadedImage?.url || null,
+        material: segment.material,
+        materialType: segment.materialType,
+        color: segment.color,
+        segmentImageUrl:maskImageURL,
+        surfaceArea: surfaceArea || null,
+        calibrationDistance: calibrationDistance || null,
+        hasAreaCalculation: !!surfaceArea,
+        timestamp: serverTimestamp(),
+        createdAt: new Date().toISOString(),
+      };
+
+      // Add to segments collection
+      const segmentsCollectionRef = collection(
+        db,
+        `sessions/${sessionId}/images/${uploadedImage.id}/segments`
+      );
+      const docRef = await addDoc(segmentsCollectionRef, segmentData);
+
+      console.log("Segment saved with ID:", docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error("Error saving segment data:", error);
+      throw error;
+    }
+  };
+
+  // Main function to save all segments
+  const saveAllSegments = async () => {
+    if (!analysisResults?.masks || analysisResults.masks.length === 0) {
+      setSaveStatus("❌ No segments to save");
+      return;
+    }
+
+    setSaving(true);
+    setSaveStatus("Starting save process...");
+
+    try {
+      const sessionId = localStorage.getItem("heatscape_session_id");
+      if (!sessionId) {
+        throw new Error("No active session found");
+      }
+
+      const totalSegments = analysisResults.masks.length;
+
+      // Process all segments in parallel
+      const savePromises = analysisResults.masks.map(async (segment, i) => {
+        setSaveStatus(
+          `Processing segment ${i + 1} of ${totalSegments}: ${segment.material}...`
+        );
+
+        // Generate unique segment ID
+        const segmentId = `seg_${Date.now()}_${i}`;
+
+        // Upload mask image to storage
+        const maskImageURL = await uploadMaskImage(
+          segment.mask_base64,
+          segmentId,
+          segment.material,
+          segment.color
+        );
+
+        // Get surface area if calculated
+        const surfaceArea = calculatedAreas[segment.material] || null;
+
+        // Save segment data to Firestore
+        await saveSegmentData(segment, maskImageURL, surfaceArea);
+
+        return { segment: segment.material, success: true };
+      });
+
+      // Wait for all saves to complete
+      const results = await Promise.all(savePromises);
+      const savedCount = results.filter((result) => result.success).length;
+
+      setSaveStatus(
+        `✅ Successfully saved ${savedCount} segments to database!`
+      );
+      setSegmentsSaved(true);
+
+      // Clear status after 5 seconds
+      setTimeout(() => {
+        setSaveStatus("");
+      }, 5000);
+    } catch (error) {
+      console.error("Error saving segments:", error);
+      setSaveStatus(`❌ Failed to save segments: ${error.message}`);
+
+      // Clear error status after 10 seconds
+      setTimeout(() => {
+        setSaveStatus("");
+      }, 10000);
+    } finally {
+      setSaving(false);
     }
   };
   // STEP 1: UPLOAD / INITIAL SCREEN
@@ -566,6 +798,49 @@ const Segment = () => {
           New Analysis
         </Button> */}
       </Card>
+
+      {/* Save Section */}
+      <Card className="mb-4">
+        <div className="d-flex align-items-center justify-content-between flex-wrap">
+          <div className="flex-grow-1">
+            <h5 className="mb-1">Save Segments to Database</h5>
+            <p className="text-muted small mb-0">
+              Save each segmented material as mask image and surface area
+              results to the database
+            </p>
+          </div>
+          <div className="ms-3">
+            <Button
+              type="primary"
+              onClick={saveAllSegments}
+              loading={saving}
+              disabled={segmentsSaved || !analysisResults?.masks?.length}
+              size="large"
+              icon={segmentsSaved ? <CheckCircleOutlined /> : <SaveOutlined />}
+            >
+              {segmentsSaved
+                ? "Segments Saved"
+                : `Save ${analysisResults?.masks?.length || 0} Segments`}
+            </Button>
+          </div>
+        </div>
+        {saveStatus && (
+          <div className="mt-3">
+            <Alert
+              message={saveStatus}
+              type={
+                saveStatus.includes("✅")
+                  ? "success"
+                  : saveStatus.includes("❌")
+                    ? "error"
+                    : "info"
+              }
+              showIcon
+              className="mb-0"
+            />
+          </div>
+        )}
+      </Card>
       <Row gutter={[24, 24]}>
         {/* LEFT COLUMN */}
         <Col xs={24} lg={12}>
@@ -713,14 +988,22 @@ const Segment = () => {
                         <div className="mt-2">
                           <small className="text-muted">
                             Materials:{" "}
-                            {analysisResults.material_breakdown[item.material].map(
-                              (mat, idx) => (
-                                <span key={idx}>
-                                  {mat.material}: {mat.percentage.toFixed(1)}%
-                                  {idx < analysisResults.material_breakdown[item.material].length - 1 ? ", " : ""}
-                                </span>
-                              )
-                            )}
+                            {analysisResults.material_breakdown[
+                              item.material
+                            ].map((mat) => (
+                              <span key={mat.material}>
+                                {mat.material}: {mat.percentage.toFixed(1)}%
+                                {analysisResults.material_breakdown[
+                                  item.material
+                                ].indexOf(mat) <
+                                analysisResults.material_breakdown[
+                                  item.material
+                                ].length -
+                                  1
+                                  ? ", "
+                                  : ""}
+                              </span>
+                            ))}
                           </small>
                         </div>
                       )}
@@ -905,9 +1188,7 @@ const Segment = () => {
                   • Masks are overlaid with {Math.round(0.8 * 100)}% opacity for
                   better visibility
                 </p>
-                <p>
-                  • Material composition details shown for each segment
-                </p>
+                <p>• Material composition details shown for each segment</p>
               </div>
             </div>
           </Card>

@@ -804,6 +804,164 @@ const AutonomousNavigation = ({
     useEffect(() => {console.log("Selected image changedxxxxxxxxxxxxxxxxxxxxxx:", selectedImage);
     }, [selectedImage]);
 
+    
+    const keysPressed = useRef(new Set());
+    const commandQueue = useRef([]);
+    const lastCommandTime = useRef(0);
+    const isProcessingCommands = useRef(false);
+    
+    // Rate limiting for commands (minimum 100ms between commands)
+    const COMMAND_RATE_LIMIT = 100;
+
+    const processCommandQueue = useCallback(() => {
+        if (commandQueue.current.length > 0) {
+            // Get the latest command of the same type to avoid spam
+            const latestCommand = commandQueue.current.pop();
+            commandQueue.current = [];
+            
+            sendCommand(latestCommand);
+            lastCommandTime.current = Date.now();
+            
+            // Check if more commands are waiting
+            setTimeout(() => {
+                if (commandQueue.current.length > 0) {
+                    processCommandQueue();
+                } else {
+                    isProcessingCommands.current = false;
+                }
+            }, COMMAND_RATE_LIMIT);
+        } else {
+            isProcessingCommands.current = false;
+        }
+    }, [sendCommand]);
+
+    // Enhanced sendCommand with rate limiting
+    const sendCommandWithRateLimit = useCallback((command) => {
+        const now = Date.now();
+        if (now - lastCommandTime.current < COMMAND_RATE_LIMIT) {
+            // Add to queue if too soon
+            commandQueue.current.push(command);
+            if (!isProcessingCommands.current) {
+                isProcessingCommands.current = true;
+                setTimeout(() => {
+                    processCommandQueue();
+                }, COMMAND_RATE_LIMIT - (now - lastCommandTime.current));
+            }
+            return;
+        }
+        
+        // Send immediately
+        sendCommand(command);
+        lastCommandTime.current = now;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sendCommand]);
+
+    // Keyboard control handlers
+    const handleKeyDown = useCallback((event) => {
+        if (keysPressed.current.has(event.key.toLowerCase())) return; // Prevent key repeat
+        keysPressed.current.add(event.key.toLowerCase());
+
+        switch (event.key.toLowerCase()) {
+            // Movement controls (Arrow keys)
+            case 'arrowup':
+                event.preventDefault();
+                sendCommandWithRateLimit('backward');
+                break;
+            case 'arrowdown':
+                event.preventDefault();
+                sendCommandWithRateLimit('forward');
+                break;
+            case 'arrowleft':
+                event.preventDefault();
+                sendCommandWithRateLimit('right');
+                break;
+            case 'arrowright':
+                event.preventDefault();
+                sendCommandWithRateLimit('left');
+                break;
+            // Camera controls (WASD)
+            case 'w':
+                event.preventDefault();
+                setCamAngle(prev => {
+                    const newVAngle = Math.max(0, prev.V_TURN_CAM - 10); // Limit to minimum 0
+                    sendCommandWithRateLimit(`V_TURN_CAM:${newVAngle}`);
+                    return { ...prev, V_TURN_CAM: newVAngle };
+                });
+                break;
+            case 's':
+                event.preventDefault();
+                setCamAngle(prev => {
+                    const newVAngle = Math.min(180, prev.V_TURN_CAM + 10); // Limit to maximum 180
+                    sendCommandWithRateLimit(`V_TURN_CAM:${newVAngle}`);
+                    return { ...prev, V_TURN_CAM: newVAngle };
+                });
+                break;
+            case 'a':
+                event.preventDefault();
+                setCamAngle(prev => {
+                    const newHAngle = Math.min(180, prev.H_TURN_CAM + 10); // Limit to maximum 180
+                    sendCommandWithRateLimit(`H_TURN_CAM:${newHAngle}`);
+                    return { ...prev, H_TURN_CAM: newHAngle };
+                });
+                break;
+            case 'd':
+                event.preventDefault();
+                setCamAngle(prev => {
+                    const newHAngle = Math.max(0, prev.H_TURN_CAM - 10); // Limit to minimum 0
+                    sendCommandWithRateLimit(`H_TURN_CAM:${newHAngle}`);
+                    return { ...prev, H_TURN_CAM: newHAngle };
+                });
+                break;
+            case 'x':
+                message.success('✅ Target successfully centered and confirmed!');
+                break;
+            case 'z':
+                message.success('🎯 Target reached!');
+                break;
+            // Emergency stop
+            case ' ':
+            case 'escape':
+                event.preventDefault();
+                sendCommand('stop'); // Emergency stop should be immediate
+                sendCommand('V_TURN_CAM:90');
+                sendCommand('H_TURN_CAM:90');
+                // Reset camera angle state to center position
+                setCamAngle({ V_TURN_CAM: 90, H_TURN_CAM: 90 });
+                break;
+            default:
+                break;
+        }
+    }, [sendCommand, sendCommandWithRateLimit]);
+
+    const handleKeyUp = useCallback((event) => {
+        keysPressed.current.delete(event.key.toLowerCase());
+
+        switch (event.key.toLowerCase()) {
+            // Stop movement when arrow keys are released
+            case 'arrowup':
+            case 'arrowdown':
+            case 'arrowleft':
+            case 'arrowright':
+                event.preventDefault();
+                sendCommand('stop'); // Stop should be immediate
+                break;
+            default:
+                break;
+        }
+    }, [sendCommand]);
+
+    useEffect(() => {
+        // Add keyboard event listeners
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        
+        return () => {
+            // Remove keyboard event listeners
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, [handleKeyDown, handleKeyUp]);
+
     // Handle temperature data updates and create temperature records
     // useEffect(() => {
     //     if (temperature && Array.isArray(temperature) && temperature.length > 0 && selectedImage) {

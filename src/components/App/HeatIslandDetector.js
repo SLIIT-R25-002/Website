@@ -14,7 +14,7 @@ import {
 import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
 
-const API_BASE = import.meta.env.VITE_VLM_BASE_URL || 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_VLM_BASE_URL || 'http://localhost:5000';
 
 // Utility: stable IDs
 const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));

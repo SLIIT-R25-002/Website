@@ -20,8 +20,9 @@ import {
   getDocs,
   query,
   orderBy,
-  addDoc,
   serverTimestamp,
+  writeBatch,
+  doc,
 } from "firebase/firestore";
 import { getStorage, ref, getDownloadURL, uploadBytes } from "firebase/storage";
 import { db } from "../../../firebase";
@@ -66,6 +67,7 @@ const Segment = () => {
   // Backend API base URL - update this to your actual backend URL
   const API_BASE_URL = API_CONFIG.BASE_URL;
   // Helper function to get image blob from Firebase Storage using storage path
+
   const getImageBlobFromStorage = async (imagePath) => {
     try {
       const storage = getStorage();
@@ -362,65 +364,85 @@ const Segment = () => {
     }
   };
 
-  // Helper function to create colored mask from base64
-  const createColoredMask = (maskBase64, color) =>
-    new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        
-        // Draw the original mask
-        ctx.drawImage(img, 0, 0);
-        
-        // Get image data
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const { data } = imageData;
-        
-        // Convert hex color to RGB
-        const hexToRgb = (hex) => {
-          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-          return result ? {
-            r: parseInt(result[1], 16),
-            g: parseInt(result[2], 16),
-            b: parseInt(result[3], 16)
-          } : null;
-        };
-        
-        const rgb = hexToRgb(color);
-        
-        // Process each pixel
-        for (let i = 0; i < data.length; i += 4) {
-          const alpha = data[i + 3];
-          
-          // If pixel is not transparent (mask area)
-          if (alpha > 128) {
-            // Apply the segment color
-            data[i] = rgb.r;     // Red
-            data[i + 1] = rgb.g; // Green  
-            data[i + 2] = rgb.b; // Blue
-            data[i + 3] = 255;   // Alpha
-          } else {
-            // Make background black
-            data[i] = 0;         // Red
-            data[i + 1] = 0;     // Green
-            data[i + 2] = 0;     // Blue
-            data[i + 3] = 255;   // Alpha (opaque black)
+  const createOriginalContentMask = (originalImageUrl, maskBase64) =>
+    new Promise((resolve, reject) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const originalImg = new Image();
+      const maskImg = new Image();
+
+      // CORSບັນຫາ මගහරවා ගැනීමට
+      originalImg.crossOrigin = "Anonymous";
+      maskImg.crossOrigin = "Anonymous";
+
+      let originalLoaded = false;
+      let maskLoaded = false;
+
+      const processImages = () => {
+        if (!originalLoaded || !maskLoaded) return;
+
+        canvas.width = originalImg.width;
+        canvas.height = originalImg.height;
+
+        // 1. Draw the original image onto the main canvas
+        ctx.drawImage(originalImg, 0, 0);
+        const originalImageData = ctx.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+        const originalPixels = originalImageData.data;
+
+        // 2. Draw the mask onto a temporary canvas to read its pixels
+        const tempCanvas = document.createElement("canvas");
+        const tempCtx = tempCanvas.getContext("2d");
+        tempCanvas.width = originalImg.width;
+        tempCanvas.height = originalImg.height;
+        tempCtx.drawImage(maskImg, 0, 0, originalImg.width, originalImg.height);
+        const maskPixels = tempCtx.getImageData(
+          0,
+          0,
+          tempCanvas.width,
+          tempCanvas.height
+        ).data;
+
+        // 3. Iterate through pixels and apply the mask
+        for (let i = 0; i < originalPixels.length; i += 4) {
+          // Check the mask's alpha channel or brightness (since it's B&W)
+          // If the mask pixel is black/transparent (not part of the segment)
+          if (maskPixels[i] < 128) {
+            // Make the corresponding pixel in the original image black
+            originalPixels[i] = 0; // Red
+            originalPixels[i + 1] = 0; // Green
+            originalPixels[i + 2] = 0; // Blue
+            // Keep alpha as is or make opaque
           }
+          // If the mask pixel is white, we do nothing, keeping the original pixel.
         }
-        
-        // Put the modified image data back
-        ctx.putImageData(imageData, 0, 0);
-        
-        // Convert canvas to base64
-        const coloredBase64 = canvas.toDataURL('image/png').split(',')[1];
-        resolve(coloredBase64);
+
+        // 4. Put the modified pixel data back onto the main canvas
+        ctx.putImageData(originalImageData, 0, 0);
+
+        // 5. Resolve with the final base64 data
+        resolve(canvas.toDataURL("image/png").split(",")[1]);
       };
-      
-      img.src = `data:image/png;base64,${maskBase64}`;
+
+      originalImg.onload = () => {
+        originalLoaded = true;
+        processImages();
+      };
+      maskImg.onload = () => {
+        maskLoaded = true;
+        processImages();
+      };
+
+      originalImg.onerror = reject;
+      maskImg.onerror = reject;
+
+      originalImg.src = originalImageUrl;
+      maskImg.src = `data:image/png;base64,${maskBase64}`;
     });
 
   // Helper function to convert base64 to blob
@@ -435,7 +457,7 @@ const Segment = () => {
   };
 
   // Function to upload mask image to Firebase Storage
-  const uploadMaskImage = async (maskBase64, segmentId, material, color) => {
+  const uploadMaskImage = async (maskBase64, segmentId, material) => {
     try {
       const storage = getStorage();
       const sessionId = localStorage.getItem("heatscape_session_id");
@@ -443,11 +465,13 @@ const Segment = () => {
       const fileName = `mask_${material}_${segmentId}_${timestamp}.png`;
       const storagePath = `sessions/${sessionId}/images/${uploadedImage.id}/segments/${fileName}`;
 
-      // Create colored mask with segment color and black background
-      const coloredMaskBase64 = await createColoredMask(maskBase64, color);
-      
+      const finalMaskBase64 = await createOriginalContentMask(
+        uploadedImage.url,
+        maskBase64
+      );
+
       // Convert base64 to blob
-      const blob = base64ToBlob(coloredMaskBase64);
+      const blob = base64ToBlob(finalMaskBase64);
 
       // Upload to Firebase Storage
       const storageRef = ref(storage, storagePath);
@@ -462,43 +486,11 @@ const Segment = () => {
     }
   };
 
-  // Function to save segment data to Firestore
-  const saveSegmentData = async (segment, maskImageURL, surfaceArea) => {
-    try {
-      const sessionId = localStorage.getItem("heatscape_session_id");
-      if (!sessionId) {
-        throw new Error("No active session found");
-      }
-
-      const segmentData = {
-        sessionId,
-        originalImageId: uploadedImage?.id || null,
-        originalImageName: uploadedImage?.name || null,
-        originalImageURL: uploadedImage?.url || null,
-        material: segment.material,
-        materialType: segment.materialType,
-        color: segment.color,
-        segmentImageUrl:maskImageURL,
-        surfaceArea: surfaceArea || null,
-        calibrationDistance: calibrationDistance || null,
-        hasAreaCalculation: !!surfaceArea,
-        timestamp: serverTimestamp(),
-        createdAt: new Date().toISOString(),
-      };
-
-      // Add to segments collection
-      const segmentsCollectionRef = collection(
-        db,
-        `sessions/${sessionId}/images/${uploadedImage.id}/segments`
-      );
-      const docRef = await addDoc(segmentsCollectionRef, segmentData);
-
-      console.log("Segment saved with ID:", docRef.id);
-      return docRef.id;
-    } catch (error) {
-      console.error("Error saving segment data:", error);
-      throw error;
-    }
+  // Helper function to reset save state
+  const resetSaveState = () => {
+    setSaving(false);
+    setSaveStatus("");
+    setSegmentsSaved(false);
   };
 
   // Main function to save all segments
@@ -508,6 +500,7 @@ const Segment = () => {
       return;
     }
 
+    console.log("Starting saveAllSegments function");
     setSaving(true);
     setSaveStatus("Starting save process...");
 
@@ -517,40 +510,72 @@ const Segment = () => {
         throw new Error("No active session found");
       }
 
-      const totalSegments = analysisResults.masks.length;
+      const segmentCount = analysisResults.masks.length;
+      console.log(`Processing ${segmentCount} segments for save`);
 
-      // Process all segments in parallel
-      const savePromises = analysisResults.masks.map(async (segment, i) => {
-        setSaveStatus(
-          `Processing segment ${i + 1} of ${totalSegments}: ${segment.material}...`
-        );
-
-        // Generate unique segment ID
+      // Step 1: Upload all mask images first (in parallel)
+      setSaveStatus(`Uploading ${segmentCount} mask images...`);
+      const uploadPromises = analysisResults.masks.map(async (segment, i) => {
         const segmentId = `seg_${Date.now()}_${i}`;
-
-        // Upload mask image to storage
         const maskImageURL = await uploadMaskImage(
           segment.mask_base64,
           segmentId,
-          segment.material,
-          segment.color
+          segment.material
+        );
+        return { index: i, url: maskImageURL }; // Return index to match later
+      });
+      const uploadedMasks = await Promise.all(uploadPromises);
+      console.log(`Successfully uploaded ${uploadedMasks.length} mask images`);
+
+      // Step 2: Prepare batched Firestore writes
+      setSaveStatus(`Preparing ${segmentCount} Firestore writes...`);
+
+      const batch = writeBatch(db); // Import writeBatch
+
+      // Create a mapping from index to segment data for easy lookup
+      const maskUrlMap = new Map(
+        uploadedMasks.map((item) => [item.index, item.url])
+      );
+
+      // Create an array of all segment data objects
+      const segmentsToSave = analysisResults.masks.map((segment, i) => ({
+        segment,
+        surfaceArea: calculatedAreas[segment.material] || null,
+        maskImageUrl: maskUrlMap.get(i),
+        segmentId: `seg_${Date.now()}_${i}`,
+      }));
+
+      // Add each segment document to the batch
+      segmentsToSave.forEach((item) => {
+        const segmentData = {
+          sessionId,
+          label: item.segment.material,
+          material: item.segment.materialType,
+          color: item.segment.color,
+          segmentImageUrl: item.maskImageUrl,
+          area: item.surfaceArea,
+          timestamp: serverTimestamp(),
+          createdAt: new Date().toISOString(),
+        };
+
+        const segmentsCollectionRef = collection(
+          db,
+          `sessions/${sessionId}/images/${uploadedImage.id}/segments`
         );
 
-        // Get surface area if calculated
-        const surfaceArea = calculatedAreas[segment.material] || null;
-
-        // Save segment data to Firestore
-        await saveSegmentData(segment, maskImageURL, surfaceArea);
-
-        return { segment: segment.material, success: true };
+        // Add this document to the batch
+        const docRef = doc(segmentsCollectionRef); // Creates a new document ref
+        batch.set(docRef, segmentData);
       });
 
-      // Wait for all saves to complete
-      const results = await Promise.all(savePromises);
-      const savedCount = results.filter((result) => result.success).length;
+      // Step 3: Commit the batch (single network request!)
+      setSaveStatus(`Saving ${segmentCount} segments to database...`);
+      console.log("Committing batch write to Firestore");
+      await batch.commit();
+      console.log("Batch write successful");
 
       setSaveStatus(
-        `✅ Successfully saved ${savedCount} segments to database!`
+        `✅ Successfully saved ${segmentCount} segments to database!`
       );
       setSegmentsSaved(true);
 
@@ -558,18 +583,20 @@ const Segment = () => {
       setTimeout(() => {
         setSaveStatus("");
       }, 5000);
+
     } catch (error) {
       console.error("Error saving segments:", error);
       setSaveStatus(`❌ Failed to save segments: ${error.message}`);
-
       // Clear error status after 10 seconds
       setTimeout(() => {
         setSaveStatus("");
       }, 10000);
     } finally {
+      console.log("saveAllSegments finally block - setting saving to false");
       setSaving(false);
     }
   };
+
   // STEP 1: UPLOAD / INITIAL SCREEN
   if (currentStep === "upload") {
     return (
@@ -809,7 +836,7 @@ const Segment = () => {
               results to the database
             </p>
           </div>
-          <div className="ms-3">
+          <div className="ms-3 d-flex gap-2">
             <Button
               type="primary"
               onClick={saveAllSegments}
@@ -822,6 +849,16 @@ const Segment = () => {
                 ? "Segments Saved"
                 : `Save ${analysisResults?.masks?.length || 0} Segments`}
             </Button>
+            {(saving || segmentsSaved) && (
+              <Button
+                type="default"
+                onClick={resetSaveState}
+                size="large"
+                title="Reset save state"
+              >
+                Reset
+              </Button>
+            )}
           </div>
         </div>
         {saveStatus && (

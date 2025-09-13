@@ -15,13 +15,31 @@ import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storag
 import { db, storage } from '../../firebase';
 
 /* ----------------------- Utilities and converters ---------------------- */
+// Normalize material names, optionally using the segment label as a hint
+const normalizeMaterial = (material, label) => {
+  const m = String(material ?? '').toLowerCase().trim();
+  const lbl = String(label ?? '').toLowerCase().trim();
+
+  // Brick -> concrete
+  if (m === 'brick') return 'concrete';
+
+  // If label says vegetation, force grass when material is empty/unknown or "vegetation"
+  if ((!m || m === 'vegetation') && lbl === 'vegetation') return 'grass';
+
+  // If someone literally wrote "vegetation" as the material, treat it as grass
+  if (m === 'vegetation') return 'grass';
+
+  return m;
+};
+
 // Convert local segments -> API payload (prevent NaN -> null leakage)
 const toApiSegments = (segments) =>
   segments.map((s) => {
     const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+    const mat = normalizeMaterial(s.material, s.label);
     return {
       label: String(s.label || '').trim(),
-      material: String(s.material || '').toLowerCase().trim(),
+      material: String(mat || '').toLowerCase().trim(),
       temp: num(s.temp),
       humidity: num(s.humidity),
       area: num(s.area),
@@ -68,8 +86,8 @@ const materialOptions = [
 
 // Legacy array item (stored on image doc at images[].segments[])
 const mapFsSegmentArrayToLocal = (seg) => {
-  const rawMaterial = String(seg?.material ?? '').toLowerCase().trim();
-  // prefer numeric, else 0
+  const normalized = normalizeMaterial(seg?.material, seg?.label);
+  const rawMaterial = String(normalized ?? '').toLowerCase().trim();
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
   return {
@@ -92,11 +110,16 @@ const mapFsSegmentSubdocToLocal = (seg) => {
     : (Array.isArray(seg?.material) ? seg.material : [seg?.material]).filter(Boolean);
 
   const candidates = list
+    .map((m) => normalizeMaterial(m, seg?.label))
     .map((m) => String(m || '').toLowerCase().trim())
     .filter((m) => materialOptions.includes(m));
 
-  const chosen = candidates[0] || '';
+  // If we still have nothing but the label is vegetation, prefer "grass"
+  if (candidates.length === 0 && String(seg?.label ?? '').toLowerCase().trim() === 'vegetation') {
+    candidates.push('grass');
+  }
 
+  const chosen = candidates[0] || '';
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
   return {
@@ -141,13 +164,16 @@ const newManualItem = () => ({
 
 /* ----------------------- Converters / validation utils ---------------------- */
 const segmentsToFs = (segments) =>
-  segments.map((s) => ({
-    label: String(s.label || '').trim() || null,
-    material: String(s.material || '').toLowerCase() || null,
-    temperature: Number(s.temp),
-    humidity: Number(s.humidity),
-    surfaceArea: Number(s.area),
-  }));
+  segments.map((s) => {
+    const mat = normalizeMaterial(s.material, s.label);
+    return {
+      label: String(s.label || '').trim() || null,
+      material: (materialOptions.includes(mat) ? mat : null),
+      temperature: Number(s.temp),
+      humidity: Number(s.humidity),
+      surfaceArea: Number(s.area),
+    };
+  });
 
 const toNum = (v) => (v === '' || v === null || v === undefined ? NaN : Number(v));
 const isFiniteNum = (v) => Number.isFinite(v);
@@ -173,7 +199,7 @@ const uniq = (arr) => Array.from(new Set(arr));
 const getMaterialsSet = (item) =>
   new Set(
     (item?.segments || [])
-      .map((s) => String(s?.material ?? '').trim().toLowerCase())
+      .map((s) => String(normalizeMaterial(s?.material, s?.label) ?? '').trim().toLowerCase())
       .filter(Boolean)
   );
 
@@ -414,7 +440,21 @@ const HeatIslandDetector = () => {
     setItems((prev) =>
       prev.map((x) => {
         if (x.id !== imageId) return x;
-        const segs = x.segments.map((s) => (s.id === segId ? { ...s, [field]: value } : s));
+        const segs = x.segments.map((s) => {
+          if (s.id !== segId) return s;
+          // Normalize material live as the user types/chooses
+          if (field === 'material') {
+            const mat = normalizeMaterial(value, s.label);
+            return { ...s, material: mat };
+          }
+          if (field === 'label') {
+            // if label changes to vegetation, and current material is empty/vegetation -> grass
+            const nextLabel = String(value ?? '');
+            const mat = normalizeMaterial(s.material, nextLabel);
+            return { ...s, label: nextLabel, material: mat };
+          }
+          return { ...s, [field]: value };
+        });
         return { ...x, segments: segs };
       })
     );
@@ -855,74 +895,80 @@ const HeatIslandDetector = () => {
               </thead>
               <tbody>
                 {item.segments.length ? (
-                  item.segments.map((seg) => (
-                    <tr key={seg.id}>
-                      <td style={{ width: 68 }}>
-                        {seg.segmentImageUrl ? (
-                          <img
-                            src={seg.segmentImageUrl}
-                            alt="segment"
-                            style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }}
+                  item.segments.flatMap((seg) => {
+                    const mats = seg.materialCandidates && seg.materialCandidates.length > 0
+                      ? seg.materialCandidates
+                      : [seg.material || ''];
+
+                    return mats.map((mat) => (
+                      <tr key={`${seg.id}-${mat}`}>
+                        <td style={{ width: 68 }}>
+                          {seg.segmentImageUrl ? (
+                            <img
+                              src={seg.segmentImageUrl}
+                              alt="segment"
+                              style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }}
+                            />
+                          ) : null}
+                        </td>
+
+                        <td style={{ minWidth: 160 }}>
+                          <Form.Control
+                            type="text"
+                            value={seg.label}
+                            placeholder="building / road / sidewalk"
+                            onChange={(e) => updateSegmentField(item.id, seg.id, 'label', e.target.value)}
                           />
-                        ) : null}
-                      </td>
-                      <td style={{ minWidth: 160 }}>
-                        <Form.Control
-                          type="text"
-                          value={seg.label}
-                          placeholder="building / road / sidewalk"
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'label', e.target.value)}
-                        />
-                      </td>
-                      <td style={{ minWidth: 160 }}>
-                        <Form.Select
-                          value={seg.material}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'material', e.target.value)}
-                        >
-                          <option value="">Select Material</option>
-                          {materialOptions.map((m) => (<option key={m} value={m}>{m}</option>))}
-                        </Form.Select>
-                        {/* If you want to show quick-pick chips for candidates from DB:
-                        {Array.isArray(seg.materialCandidates) && seg.materialCandidates.length > 1 && (
-                          <div className="mt-1 d-flex flex-wrap gap-1">
-                            {seg.materialCandidates.map((m) => (
-                              <Button key={m} size="sm" variant="outline-secondary"
-                                onClick={() => updateSegmentField(item.id, seg.id, 'material', m)}>
-                                {m}
-                              </Button>
-                            ))}
-                          </div>
-                        )} */}
-                      </td>
-                      <td style={{ minWidth: 120 }}>
-                        <Form.Control
-                          type="number"
-                          value={seg.temp}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'temp', e.target.value)}
-                        />
-                      </td>
-                      <td style={{ minWidth: 120 }}>
-                        <Form.Control
-                          type="number"
-                          value={seg.humidity}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'humidity', e.target.value)}
-                        />
-                      </td>
-                      <td style={{ minWidth: 140 }}>
-                        <Form.Control
-                          type="number"
-                          value={seg.area}
-                          onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <Button variant="outline-danger" size="sm" onClick={() => removeSegment(item.id, seg.id)}>Remove</Button>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+
+                        {/* Material row — if multiple, each gets its own row */}
+                        <td style={{ minWidth: 160 }}>
+                          <Form.Select
+                            value={mat}
+                            onChange={(e) => updateSegmentField(item.id, seg.id, 'material', e.target.value)}
+                          >
+                            <option value="">Select Material</option>
+                            {materialOptions.map((m) => (<option key={m} value={m}>{m}</option>))}
+                          </Form.Select>
+                        </td>
+
+                        <td style={{ minWidth: 120 }}>
+                          <Form.Control
+                            type="number"
+                            value={seg.temp}
+                            onChange={(e) => updateSegmentField(item.id, seg.id, 'temp', e.target.value)}
+                          />
+                        </td>
+                        <td style={{ minWidth: 120 }}>
+                          <Form.Control
+                            type="number"
+                            value={seg.humidity}
+                            onChange={(e) => updateSegmentField(item.id, seg.id, 'humidity', e.target.value)}
+                          />
+                        </td>
+                        <td style={{ minWidth: 140 }}>
+                          <Form.Control
+                            type="number"
+                            value={seg.area}
+                            onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)}
+                          />
+                        </td>
+                        <td>
+                          <Button
+                            variant="outline-danger"
+                            size="sm"
+                            onClick={() => removeSegment(item.id, seg.id)}
+                          >
+                            Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    ));
+                  })
                 ) : (
                   <tr><td colSpan={7} className="text-center">No segments.</td></tr>
                 )}
+
               </tbody>
             </Table>
             <Button variant="outline-secondary" onClick={() => addSegment(item.id)}>+ Add Segment</Button>
@@ -981,7 +1027,7 @@ const HeatIslandDetector = () => {
               </Row>
             )}
 
-            {/* Recommendation + Chat (unchanged) */}
+            {/* Recommendation + Chat */}
             {item.recommendation && !item.loadingRecommend && (
               <Card className="mt-2" style={{ boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}>
                 <Card.Header 

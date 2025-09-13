@@ -340,7 +340,8 @@ const AutonomousNavigation = ({
                 }
             }
 
-            const response = await fetch('http://localhost:5000/api/set_reference', {
+            const iotBaseUrl = import.meta.env.VITE_IOT_BASE_URL || 'localhost:5000';
+            const response = await fetch(`http://${iotBaseUrl}/api/set_reference`, {
                 method: 'POST',
                 body: formData,
             });
@@ -370,7 +371,8 @@ const AutonomousNavigation = ({
         setAutonomousMode(true);
 
         try {
-            const response = await fetch('http://localhost:5000/api/start_stream', {
+            const iotBaseUrl = import.meta.env.VITE_IOT_BASE_URL || 'localhost:5000';
+            const response = await fetch(`http://${iotBaseUrl}/api/start_stream`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -402,7 +404,8 @@ const AutonomousNavigation = ({
     // Function to stop video stream
     const stopVideoStream = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/stop_stream', {
+            const iotBaseUrl = import.meta.env.VITE_IOT_BASE_URL || 'localhost:5000';
+            const response = await fetch(`http://${iotBaseUrl}/api/stop_stream`, {
                 method: 'POST'
             });
 
@@ -425,7 +428,8 @@ const AutonomousNavigation = ({
     // Auto camera alignment functions
     const checkFrameMatches = useCallback(async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/next_frame');
+            const iotBaseUrl = import.meta.env.VITE_IOT_BASE_URL || 'localhost:5000';
+            const response = await fetch(`http://${iotBaseUrl}/api/next_frame`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }

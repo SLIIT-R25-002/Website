@@ -486,6 +486,24 @@ const Segment = () => {
     }
   };
 
+  // Helper function to convert material breakdown to string array
+  const getMaterialsArray = (material) => {
+    if (
+      !analysisResults?.material_breakdown ||
+      !analysisResults.material_breakdown[material]
+    ) {
+      return [];
+    }
+
+    // Convert material breakdown to array of material names only
+    const materialsArray = analysisResults.material_breakdown[material].map(
+      (mat) => mat.material
+    );
+
+    console.log(`Material breakdown for ${material}:`, materialsArray);
+    return materialsArray;
+  };
+
   // Helper function to reset save state
   const resetSaveState = () => {
     setSaving(false);
@@ -547,13 +565,23 @@ const Segment = () => {
 
       // Add each segment document to the batch
       segmentsToSave.forEach((item) => {
+        // Get materials breakdown for this segment
+        const materialsArray = getMaterialsArray(item.segment.material);
+        console.log(`Materials for ${item.segment.material}:`, materialsArray);
+
         const segmentData = {
           sessionId,
-          label: item.segment.material,
-          material: item.segment.materialType,
+          originalImageId: uploadedImage?.id || null,
+          originalImageName: uploadedImage?.name || null,
+          originalImageURL: uploadedImage?.url || null,
+          material: item.segment.material,
+          materialType: item.segment.materialType,
           color: item.segment.color,
           segmentImageUrl: item.maskImageUrl,
-          area: item.surfaceArea,
+          surfaceArea: item.surfaceArea,
+          calibrationDistance: calibrationDistance || null,
+          hasAreaCalculation: !!item.surfaceArea,
+          materials: materialsArray, // Add materials as string array
           timestamp: serverTimestamp(),
           createdAt: new Date().toISOString(),
         };
@@ -575,7 +603,7 @@ const Segment = () => {
       console.log("Batch write successful");
 
       setSaveStatus(
-        `✅ Successfully saved ${segmentCount} segments to database!`
+        `✅ Successfully saved ${segmentCount} segments with material breakdown to database!`
       );
       setSegmentsSaved(true);
 
@@ -583,7 +611,6 @@ const Segment = () => {
       setTimeout(() => {
         setSaveStatus("");
       }, 5000);
-
     } catch (error) {
       console.error("Error saving segments:", error);
       setSaveStatus(`❌ Failed to save segments: ${error.message}`);
@@ -832,8 +859,8 @@ const Segment = () => {
           <div className="flex-grow-1">
             <h5 className="mb-1">Save Segments to Database</h5>
             <p className="text-muted small mb-0">
-              Save each segmented material as mask image and surface area
-              results to the database
+              Save each segmented material with mask image, surface area, and
+              material types (concrete, glass, brick) to the database
             </p>
           </div>
           <div className="ms-3 d-flex gap-2">

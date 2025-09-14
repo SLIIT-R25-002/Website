@@ -21,7 +21,7 @@ const normalizeMaterial = (material, label) => {
   const lbl = String(label ?? '').toLowerCase().trim();
 
   // Brick -> concrete
-  if (m === 'brick') return 'concrete';
+  // if (m === 'brick') return 'concrete';
 
   // If label says vegetation, force grass when material is empty/unknown or "vegetation"
   if ((!m || m === 'vegetation') && lbl === 'vegetation') return 'grass';
@@ -68,9 +68,7 @@ const buildImagePayload = (item) => {
   return { segments: segmentsPayload, image_base64: b64, image_mime: mime };
 };
 
-const API_BASE =
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_VLM_BASE_URL) ||
-  process.env.REACT_APP_VLM_BASE_URL ||
+const API_BASE = process.env.REACT_APP_VLM_BASE_URL ||
   'http://localhost:5000';
 
 // Utility: stable IDs
@@ -105,6 +103,7 @@ const mapFsSegmentArrayToLocal = (seg) => {
 // Sub-collection document at images/{imageId}/segments/{segDoc}
 const mapFsSegmentSubdocToLocal = (seg) => {
   // Accept material as array or string; also accept "materials"
+  
   const list = Array.isArray(seg?.materials)
     ? seg.materials
     : (Array.isArray(seg?.material) ? seg.material : [seg?.material]).filter(Boolean);
@@ -121,7 +120,7 @@ const mapFsSegmentSubdocToLocal = (seg) => {
 
   const chosen = candidates[0] || '';
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-
+  
   return {
     id: uid(),
     label: String(seg?.label ?? ''),
@@ -130,7 +129,8 @@ const mapFsSegmentSubdocToLocal = (seg) => {
     temp: n(seg?.temperature),
     humidity: n(seg?.humidity),
     // support either "area" or "surfaceArea"
-    area: n(seg?.surfaceArea ?? seg?.area),
+    area: n(seg?.area?.length > 0 ? seg?.area : seg?.surfaceArea),
+    areaForPercentage: (seg?.area?.length > 0 ? seg?.area : seg?.surfaceArea),
     segmentImageUrl: String(seg?.segmentImageUrl ?? ''),
   };
 };
@@ -146,7 +146,16 @@ const newManualItem = () => ({
   timestamp: Date.now(),
   gps: null,
   gyro: null,
-  segments: [{ id: uid(), label: '', material: '', temp: '', humidity: '', area: '' }],
+  segments: [{ 
+    id: uid(), 
+    label: '', 
+    material: '', 
+    materialCandidates: [],
+    temp: '', 
+    humidity: '', 
+    area: '',
+    segmentImageUrl: ''
+  }],
   results: null,
   warnings: [],
   recommendation: null,
@@ -286,8 +295,9 @@ const HeatIslandDetector = () => {
               segCol,
               (segSnap) => {
                 const localsRaw = [];
+                
                 segSnap.forEach((sdoc) => localsRaw.push(mapFsSegmentSubdocToLocal(sdoc.data())));
-
+                
                 // Backfill label/area from legacy array when missing
                 const current = itemsRef.current.find((it) => it.id === `fs:${imageId}`);
                 const prior = Array.isArray(current?.segments) ? current.segments : [];
@@ -422,7 +432,16 @@ const HeatIslandDetector = () => {
     setItems((prev) =>
       prev.map((x) =>
         x.id === id
-          ? { ...x, segments: [...x.segments, { id: uid(), label: '', material: '', temp: '', humidity: '', area: '' }] }
+          ? { ...x, segments: [...x.segments, { 
+              id: uid(), 
+              label: '', 
+              material: '', 
+              materialCandidates: [],
+              temp: '', 
+              humidity: '', 
+              area: '',
+              segmentImageUrl: ''
+            }] }
           : x
       )
     );
@@ -432,7 +451,19 @@ const HeatIslandDetector = () => {
       prev.map((x) => {
         if (x.id !== imageId) return x;
         const segs = x.segments.filter((s) => s.id !== segId);
-        return { ...x, segments: segs.length ? segs : [{ id: uid(), label: '', material: '', temp: '', humidity: '', area: '' }] };
+        return { 
+          ...x, 
+          segments: segs.length ? segs : [{ 
+            id: uid(), 
+            label: '', 
+            material: '', 
+            materialCandidates: [],
+            temp: '', 
+            humidity: '', 
+            area: '',
+            segmentImageUrl: ''
+          }] 
+        };
       })
     );
 
@@ -446,6 +477,15 @@ const HeatIslandDetector = () => {
           if (field === 'material') {
             const mat = normalizeMaterial(value, s.label);
             return { ...s, material: mat };
+          }
+          if (field === 'materialCandidates') {
+            // Update material candidates array
+            const normalizedCandidates = value.map(v => normalizeMaterial(v, s.label));
+            return { 
+              ...s, 
+              materialCandidates: normalizedCandidates,
+              material: normalizedCandidates[0] || '' // Set primary material to first candidate
+            };
           }
           if (field === 'label') {
             // if label changes to vegetation, and current material is empty/vegetation -> grass
@@ -554,6 +594,8 @@ const HeatIslandDetector = () => {
       await persistSegments(imageDocRef, item);
 
       const { segments } = buildImagePayload(item);
+      console.log(segments);
+      
       const { data } = await axios.post(`${API_BASE}/predict`, { segments });
 
       await saveDetectionToDb(imageDocRef, data);
@@ -895,76 +937,154 @@ const HeatIslandDetector = () => {
               </thead>
               <tbody>
                 {item.segments.length ? (
-                  item.segments.flatMap((seg) => {
-                    const mats = seg.materialCandidates && seg.materialCandidates.length > 0
-                      ? seg.materialCandidates
-                      : [seg.material || ''];
-
-                    return mats.map((mat) => (
-                      <tr key={`${seg.id}-${mat}`}>
-                        <td style={{ width: 68 }}>
-                          {seg.segmentImageUrl ? (
-                            <img
-                              src={seg.segmentImageUrl}
-                              alt="segment"
-                              style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }}
-                            />
-                          ) : null}
-                        </td>
-
-                        <td style={{ minWidth: 160 }}>
-                          <Form.Control
-                            type="text"
-                            value={seg.label}
-                            placeholder="building / road / sidewalk"
-                            onChange={(e) => updateSegmentField(item.id, seg.id, 'label', e.target.value)}
+                  item.segments.map((seg) => (
+                    <tr key={seg.id}>
+                      <td style={{ width: 68 }}>
+                        {seg.segmentImageUrl ? (
+                          <img
+                            src={seg.segmentImageUrl}
+                            alt="segment"
+                            style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }}
                           />
-                        </td>
+                        ) : null}
+                      </td>
 
-                        {/* Material row — if multiple, each gets its own row */}
-                        <td style={{ minWidth: 160 }}>
-                          <Form.Select
-                            value={mat}
-                            onChange={(e) => updateSegmentField(item.id, seg.id, 'material', e.target.value)}
-                          >
-                            <option value="">Select Material</option>
-                            {materialOptions.map((m) => (<option key={m} value={m}>{m}</option>))}
-                          </Form.Select>
-                        </td>
+                      <td style={{ minWidth: 160 }}>
+                        <Form.Control
+                          type="text"
+                          value={seg.label}
+                          placeholder="building / road / sidewalk"
+                          onChange={(e) => updateSegmentField(item.id, seg.id, 'label', e.target.value)}
+                        />
+                      </td>
 
-                        <td style={{ minWidth: 120 }}>
-                          <Form.Control
-                            type="number"
-                            value={seg.temp}
-                            onChange={(e) => updateSegmentField(item.id, seg.id, 'temp', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ minWidth: 120 }}>
-                          <Form.Control
-                            type="number"
-                            value={seg.humidity}
-                            onChange={(e) => updateSegmentField(item.id, seg.id, 'humidity', e.target.value)}
-                          />
-                        </td>
-                        <td style={{ minWidth: 140 }}>
-                          <Form.Control
-                            type="number"
-                            value={seg.area}
-                            onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)}
-                          />
-                        </td>
-                        <td>
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => removeSegment(item.id, seg.id)}
-                          >
-                            Remove
-                          </Button>
-                        </td>
-                      </tr>
-                    ));
-                  })
+                      <td style={{ minWidth: 160 }}>
+                        {/* Display selected materials as badges */}
+                        <div className="mb-2">
+                          {(seg.materialCandidates && seg.materialCandidates.length > 0 ? seg.materialCandidates : [seg.material].filter(Boolean)).map((material, idx) => (
+                            <Badge 
+                              key={`${seg.id}-${material}-${idx}`}
+                              bg="primary" 
+                              className="me-1 mb-1 d-inline-flex align-items-center"
+                              style={{ 
+                                fontSize: '12px', 
+                                padding: '6px 10px',
+                                borderRadius: '12px',
+                                fontWeight: '500'
+                              }}
+                            >
+                              {material.charAt(0).toUpperCase() + material.slice(1)}
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="p-0 ms-2 text-white"
+                                style={{ 
+                                  fontSize: '14px', 
+                                  lineHeight: '1',
+                                  textDecoration: 'none',
+                                  minWidth: 'auto'
+                                }}
+                                onClick={() => {
+                                  const currentMaterials = seg.materialCandidates && seg.materialCandidates.length > 0 
+                                    ? seg.materialCandidates 
+                                    : [seg.material].filter(Boolean);
+                                  const updatedMaterials = currentMaterials.filter(m => m !== material);
+                                  updateSegmentField(item.id, seg.id, 'materialCandidates', updatedMaterials);
+                                  updateSegmentField(item.id, seg.id, 'material', updatedMaterials[0] || '');
+                                }}
+                                title="Remove material"
+                              >
+                                ×
+                              </Button>
+                            </Badge>
+                          ))}
+                          {(seg.materialCandidates?.length === 0 || (!seg.materialCandidates && !seg.material)) && (
+                            <div className="text-muted small mb-2">No materials selected</div>
+                          )}
+                        </div>
+                        
+                        {/* Dropdown to add new materials */}
+                        <Form.Select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const currentMaterials = seg.materialCandidates && seg.materialCandidates.length > 0 
+                                ? seg.materialCandidates 
+                                : [seg.material].filter(Boolean);
+                              
+                              if (!currentMaterials.includes(e.target.value)) {
+                                const updatedMaterials = [...currentMaterials, e.target.value];
+                                updateSegmentField(item.id, seg.id, 'materialCandidates', updatedMaterials);
+                                if (!seg.material) {
+                                  updateSegmentField(item.id, seg.id, 'material', e.target.value);
+                                }
+                              }
+                              e.target.value = ''; // Reset dropdown
+                            }
+                          }}
+                          style={{ 
+                            borderRadius: '8px',
+                            border: '2px solid #e2e8f0',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+                            transition: 'all 0.2s ease-in-out'
+                          }}
+                        >
+                          <option value="">+ Add Material</option>
+                          {materialOptions
+                            .filter(m => {
+                              const currentMaterials = seg.materialCandidates && seg.materialCandidates.length > 0 
+                                ? seg.materialCandidates 
+                                : [seg.material].filter(Boolean);
+                              return !currentMaterials.includes(m);
+                            })
+                            .map((m) => (
+                              <option key={m} value={m}>
+                                {m.charAt(0).toUpperCase() + m.slice(1)}
+                              </option>
+                            ))}
+                        </Form.Select>
+                        
+                        <div className="d-flex align-items-center mt-2">
+                          <div className="me-2" style={{ fontSize: '12px', color: '#6b7280' }}>
+                            💡 Select from dropdown to add materials
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={{ minWidth: 120 }}>
+                        <Form.Control
+                          type="number"
+                          value={seg.temp}
+                          onChange={(e) => updateSegmentField(item.id, seg.id, 'temp', e.target.value)}
+                        />
+                      </td>
+                      <td style={{ minWidth: 120 }}>
+                        <Form.Control
+                          type="number"
+                          value={seg.humidity}
+                          onChange={(e) => updateSegmentField(item.id, seg.id, 'humidity', e.target.value)}
+                        />
+                      </td>
+                      <td style={{ minWidth: 140 }}>
+                        <Form.Control
+                          type="number"
+                          value={seg.area}
+                          onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <Button
+                          variant="outline-danger"
+                          size="sm"
+                          onClick={() => removeSegment(item.id, seg.id)}
+                        >
+                          Remove
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
                 ) : (
                   <tr><td colSpan={7} className="text-center">No segments.</td></tr>
                 )}

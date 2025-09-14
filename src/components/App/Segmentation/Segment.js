@@ -42,6 +42,7 @@ const Segment = () => {
   const [processingStatus, setProcessingStatus] = useState("");
   const [segmentDistances, setSegmentDistances] = useState({});
   const [calculatedAreas, setCalculatedAreas] = useState({});
+  const [detailedMaterialAreas, setDetailedMaterialAreas] = useState({});
   const [visibleMasks, setVisibleMasks] = useState({});
   const [calculating, setCalculating] = useState({});
   const [progress, setProgress] = useState(0);
@@ -337,10 +338,45 @@ const Segment = () => {
       }
       const areaData = await response.json();
       console.log("Area calculation response:", areaData);
-      // Update calculated areas with the result
+
+      // Convert area from m² to cm² (1 m² = 10,000 cm²)
+      const totalAreaCm2 = areaData.surface_area * 10000;
+
+      // Calculate individual material areas based on material breakdown
+      const materialAreas = {};
+
+      // Check if material breakdown exists for this segment
+      if (
+        analysisResults?.material_breakdown &&
+        analysisResults.material_breakdown[material]
+      ) {
+        const breakdown = analysisResults.material_breakdown[material];
+        console.log(`Material breakdown for ${material}:`, breakdown);
+
+        // Calculate area for each individual material
+        breakdown.forEach((mat) => {
+          const materialArea = (totalAreaCm2 * mat.percentage) / 100;
+          materialAreas[`${mat.material}_area`] = materialArea.toFixed(1);
+        });
+
+        console.log(
+          `Individual material areas for ${material}:`,
+          materialAreas
+        );
+      }
+
+      // Store both total and individual material areas
       setCalculatedAreas((prev) => ({
         ...prev,
-        [material]: areaData.surface_area.toFixed(1),
+        [material]: (totalAreaCm2 / 10000).toFixed(1), // Keep displaying in m² for compatibility
+      }));
+
+      setDetailedMaterialAreas((prev) => ({
+        ...prev,
+        [material]: {
+          totalArea_cm2: totalAreaCm2.toFixed(1),
+          materialAreas,
+        },
       }));
     } catch (error) {
       console.error("Error calculating area:", error);
@@ -573,15 +609,36 @@ const Segment = () => {
         const materialsArray = getMaterialsArray(item.segment.material);
         console.log(`Materials for ${item.segment.material}:`, materialsArray);
 
+        // Get detailed material areas for this segment
+        const detailedAreas = detailedMaterialAreas[item.segment.material];
+
+        // Build area array similar to materials array
+        let areasArray = [];
+        if (detailedAreas && detailedAreas.materialAreas) {
+          // Create area array matching the materials array order
+          areasArray = materialsArray.map((material) => {
+            const areaKey = `${material}_area`;
+            return detailedAreas.materialAreas[areaKey] || 0;
+          });
+        }
+
+        // Build segment data
         const segmentData = {
           sessionId,
-
           label: item.segment.material,
           segmentImageUrl: item.maskImageUrl,
-          area: item.surfaceArea,
           hasAreaCalculation: !!item.surfaceArea,
           material: materialsArray,
+          area:
+            areasArray.length > 0
+              ? areasArray
+              : [parseFloat(item.surfaceArea) * 10000 || 0], // Convert m² to cm² for compatibility
+          totalArea_cm2: detailedAreas
+            ? parseFloat(detailedAreas.totalArea_cm2)
+            : parseFloat(item.surfaceArea) * 10000 || 0,
         };
+
+        console.log(`Segment data for ${item.segment.material}:`, segmentData);
 
         const segmentsCollectionRef = collection(
           db,
@@ -1092,10 +1149,44 @@ const Segment = () => {
                         </div>
                       </Col>
                       <Col span={8}>
-                        {calculatedAreas[item.material] ? (
-                          <div className="text-center">
-                            <div className="text-white fw-bold bg-success px-3 py-2 rounded shadow-sm">
-                              Surface Area: {calculatedAreas[item.material]} m²
+                        {detailedMaterialAreas[item.material] ? (
+                          <div>
+                            <div className="text-center mb-2">
+                              <div className="text-white fw-bold bg-success px-2 py-1 rounded shadow-sm small">
+                                Total:{" "}
+                                {(
+                                  parseFloat(
+                                    detailedMaterialAreas[item.material]
+                                      .totalArea_cm2
+                                  ) / 10000
+                                ).toFixed(1)}{" "}
+                                m²
+                              </div>
+                            </div>
+                            {/* Display individual material areas */}
+                            <div className="small">
+                              {Object.entries(
+                                detailedMaterialAreas[item.material]
+                                  .materialAreas
+                              ).map(([matKey, area]) => {
+                                const materialName = matKey.replace(
+                                  "_area",
+                                  ""
+                                );
+                                return (
+                                  <div
+                                    key={matKey}
+                                    className="d-flex justify-content-between border-bottom py-1"
+                                  >
+                                    <span className="text-capitalize">
+                                      {materialName}:
+                                    </span>
+                                    <span className="fw-medium text-primary">
+                                      {(parseFloat(area) / 10000).toFixed(1)} m²
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         ) : (

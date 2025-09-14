@@ -271,7 +271,7 @@ const Temperature = () => {
                             speed: parsedData.speed || 0,
                             altitude: parsedData.alt || 0,
                             hdop: parsedData.hdop || 0,
-                            satellites: parsedData.satellites || 5,
+                            satellites: parsedData.satellites || 0,
                             time: parsedData.time || '',
                         });
                     } catch (parseError) {

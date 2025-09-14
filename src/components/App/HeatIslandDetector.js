@@ -13,6 +13,9 @@ import {
 } from 'firebase/firestore';
 import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase';
+import { exportUHIItemPDF, exportUHIMultiPDF } from './ReportGenerator';
+
+// 🔽 add the report helpers
 
 /* ----------------------- Utilities and converters ---------------------- */
 // Normalize material names, optionally using the segment label as a hint
@@ -246,14 +249,16 @@ const HeatIslandDetector = () => {
   const [items, setItems] = useState([]); // fs + manual
   const [globalError, setGlobalError] = useState(null);
 
+  // keep a ref in sync (used by exportOne/exportAll and listeners)
+  const itemsRef = useRef(items);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+
   // Segment sub-collection data cache: { [imageDocId]: localSegments[] }
   const [segmentDocsByImage, setSegmentDocsByImage] = useState({});
   const segmentUnsubsRef = useRef({}); // { [imageDocId]: () => unsubscribe }
   const segmentDocsRef = useRef(segmentDocsByImage);
 
   // keep refs in sync
-  const itemsRef = useRef(items);
-  useEffect(() => { itemsRef.current = items; }, [items]);
   useEffect(() => { segmentDocsRef.current = segmentDocsByImage; }, [segmentDocsByImage]);
 
   // chat scroll refs
@@ -377,7 +382,7 @@ const HeatIslandDetector = () => {
             try { segmentUnsubsRef.current[imgId]?.(); } catch { /* Ignore cleanup errors */ }
             delete segmentUnsubsRef.current[imgId];
             setSegmentDocsByImage((prev) => {
-              const { [imgId]: _, ...rest } = prev;
+              const { [imgId]: _omit, ...rest } = prev;
               return rest;
             });
           }
@@ -810,6 +815,18 @@ const HeatIslandDetector = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // 🔽 Export handlers (placed AFTER items/useRef so ESLint doesn't complain)
+  const exportOne = async (imageId) => {
+    const item = itemsRef.current.find((x) => x.id === imageId);
+    if (!item) return;
+    await exportUHIItemPDF(item);
+  };
+
+  const exportAll = async () => {
+    if (!items.length) return;
+    await exportUHIMultiPDF(items);
+  };
+
   const headerSession = useMemo(
     () =>
       !sessionId ? (
@@ -836,6 +853,10 @@ const HeatIslandDetector = () => {
         </Button>
         <Button variant="primary" onClick={recommendAllDetected} disabled={!items.length}>
           Get Recommendations for Detected
+        </Button>
+        {/* 🔽 toolbar export all */}
+        <Button variant="outline-dark" onClick={exportAll} disabled={!items.length}>
+          Export All as PDF
         </Button>
       </div>
 
@@ -888,6 +909,16 @@ const HeatIslandDetector = () => {
                 }
               >
                 {item.loadingRecommend ? 'Recommending...' : 'Recommend'}
+              </Button>
+
+              {/* 🔽 per-card export */}
+              <Button
+                size="sm"
+                variant="outline-dark"
+                onClick={() => exportOne(item.id)}
+                title="Export this card as PDF"
+              >
+                Export PDF
               </Button>
             </div>
           </Card.Header>

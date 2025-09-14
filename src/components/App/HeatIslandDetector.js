@@ -1077,11 +1077,11 @@ const HeatIslandDetector = () => {
                             ))}
                         </Form.Select>
                         
-                        <div className="d-flex align-items-center mt-2">
+                        {/* <div className="d-flex align-items-center mt-2">
                           <div className="me-2" style={{ fontSize: '12px', color: '#6b7280' }}>
                             💡 Select from dropdown to add materials
                           </div>
-                        </div>
+                        </div> */}
                       </td>
 
                       <td style={{ minWidth: 120 }}>
@@ -1099,9 +1099,10 @@ const HeatIslandDetector = () => {
                         />
                       </td>
                       <td style={{ minWidth: 140 }}>
+                        {/* {JSON.stringify(seg, null, 2)} */}
                         <Form.Control
                           type="number"
-                          value={seg.area}
+                          value={seg.areaForPercentage?.reduce((a, b) => parseFloat(a) + parseFloat(b), 0)}
                           onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)}
                         />
                       </td>

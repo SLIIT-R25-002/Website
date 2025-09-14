@@ -20,7 +20,6 @@ import {
   getDocs,
   query,
   orderBy,
-  serverTimestamp,
   writeBatch,
   doc,
 } from "firebase/firestore";
@@ -34,12 +33,14 @@ const API_CONFIG = {
     CALCULATE_AREA: "/calculate_area",
   },
 };
+
+console.log("Segment API Base URL:", API_CONFIG.BASE_URL);
 const Segment = () => {
   const [currentStep, setCurrentStep] = useState("upload"); // 'upload', 'image-selection', 'processing', 'results'
   const [uploadedImage, setUploadedImage] = useState(null);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [processingStatus, setProcessingStatus] = useState("");
-  const [calibrationDistance, setCalibrationDistance] = useState("");
+  const [segmentDistances, setSegmentDistances] = useState({});
   const [calculatedAreas, setCalculatedAreas] = useState({});
   const [visibleMasks, setVisibleMasks] = useState({});
   const [calculating, setCalculating] = useState({});
@@ -293,11 +294,14 @@ const Segment = () => {
     await proceedWithImageAnalysis(selectedImage);
   };
   const calculateArea = async (material) => {
+    const materialDistance = segmentDistances[material];
     if (
-      !calibrationDistance ||
-      Number.isNaN(Number.parseFloat(calibrationDistance))
+      !materialDistance ||
+      Number.isNaN(Number.parseFloat(materialDistance))
     ) {
-      setProcessingStatus("Please enter a valid calibration distance first.");
+      setProcessingStatus(
+        `Please enter a valid distance for ${material} segment first.`
+      );
       return;
     }
     setCalculating((prev) => ({ ...prev, [material]: true }));
@@ -313,7 +317,7 @@ const Segment = () => {
       const requestBody = {
         image_filename: uploadedImage.name,
         mask_base64: materialData.mask_base64,
-        real_distance: parseFloat(calibrationDistance),
+        real_distance: parseFloat(materialDistance),
       };
       console.log("Calculating area for:", material, requestBody);
       // Call backend calculate_area endpoint
@@ -571,19 +575,12 @@ const Segment = () => {
 
         const segmentData = {
           sessionId,
-          originalImageId: uploadedImage?.id || null,
-          originalImageName: uploadedImage?.name || null,
-          originalImageURL: uploadedImage?.url || null,
-          material: item.segment.material,
-          materialType: item.segment.materialType,
-          color: item.segment.color,
+
+          label: item.segment.material,
           segmentImageUrl: item.maskImageUrl,
-          surfaceArea: item.surfaceArea,
-          calibrationDistance: calibrationDistance || null,
+          area: item.surfaceArea,
           hasAreaCalculation: !!item.surfaceArea,
-          materials: materialsArray, // Add materials as string array
-          timestamp: serverTimestamp(),
-          createdAt: new Date().toISOString(),
+          material: materialsArray,
         };
 
         const segmentsCollectionRef = collection(
@@ -988,29 +985,6 @@ const Segment = () => {
             </Row>
           </Card>
           <Card
-            className="mb-3"
-            title={
-              <>
-                <ToolOutlined /> Calibration
-              </>
-            }
-          >
-            <div>
-              <label className="form-label">Real-world Distance (meters)</label>
-              <Input
-                type="number"
-                step="0.1"
-                placeholder="e.g., 20.0"
-                value={calibrationDistance}
-                onChange={(e) => setCalibrationDistance(e.target.value)}
-                className="mb-2"
-              />
-              <div className="text-muted small">
-                Enter a known distance in the image for area calculations
-              </div>
-            </div>
-          </Card>
-          <Card
             title={
               <>
                 <PartitionOutlined /> Segmentation Results
@@ -1021,92 +995,132 @@ const Segment = () => {
               {analysisResults?.masks.map((item) => (
                 <div
                   key={item.material}
-                  className="d-flex justify-content-between align-items-center p-3 bg-light rounded mb-2 border"
+                  className="p-3 bg-light rounded mb-2 border"
                   style={{
                     borderLeft: `4px solid ${item.color}`,
                   }}
                 >
-                  <div className="d-flex align-items-center">
-                    <div
-                      className="rounded-circle me-3"
-                      style={{
-                        width: "20px",
-                        height: "20px",
-                        backgroundColor: item.color,
-                        border: "2px solid white",
-                        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                      }}
-                    ></div>
-                    <div>
-                      <div className="fw-medium d-flex align-items-center">
-                        {item.material === "building" && "🏢 "}
-                        {item.material === "vegetation" && "🌿 "}
-                        {item.material.charAt(0).toUpperCase() +
-                          item.material.slice(1)}
-                      </div>
-                      <div className="small text-muted">
-                        Segmented area ready for calculation
-                      </div>
-                      {/* Display material breakdown if available */}
-                      {analysisResults?.material_breakdown[item.material] && (
-                        <div className="mt-2">
-                          <small className="text-muted">
-                            Materials:{" "}
-                            {analysisResults.material_breakdown[
-                              item.material
-                            ].map((mat) => (
-                              <span key={mat.material}>
-                                {mat.material}: {mat.percentage.toFixed(1)}%
-                                {analysisResults.material_breakdown[
-                                  item.material
-                                ].indexOf(mat) <
-                                analysisResults.material_breakdown[
-                                  item.material
-                                ].length -
-                                  1
-                                  ? ", "
-                                  : ""}
-                              </span>
-                            ))}
-                          </small>
+                  <div className="d-flex justify-content-between align-items-start">
+                    <div className="d-flex align-items-center">
+                      <div
+                        className="rounded-circle me-3"
+                        style={{
+                          width: "20px",
+                          height: "20px",
+                          backgroundColor: item.color,
+                          border: "2px solid white",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                        }}
+                      ></div>
+                      <div>
+                        <div className="fw-medium d-flex align-items-center">
+                          {item.material === "building" && "🏢 "}
+                          {item.material === "vegetation" && "🌿 "}
+                          {item.material.charAt(0).toUpperCase() +
+                            item.material.slice(1)}
                         </div>
-                      )}
+                        <div className="small text-muted">
+                          Segmented area ready for calculation
+                        </div>
+                        {/* Display material breakdown if available */}
+                        {analysisResults?.material_breakdown[item.material] && (
+                          <div className="mt-2">
+                            <small className="text-muted">
+                              Materials:{" "}
+                              {analysisResults.material_breakdown[
+                                item.material
+                              ].map((mat) => (
+                                <span key={mat.material}>
+                                  {mat.material}: {mat.percentage.toFixed(1)}%
+                                  {analysisResults.material_breakdown[
+                                    item.material
+                                  ].indexOf(mat) <
+                                  analysisResults.material_breakdown[
+                                    item.material
+                                  ].length -
+                                    1
+                                    ? ", "
+                                    : ""}
+                                </span>
+                              ))}
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        type="text"
+                        icon={
+                          visibleMasks[item.material] ? (
+                            <EyeOutlined />
+                          ) : (
+                            <EyeInvisibleOutlined />
+                          )
+                        }
+                        onClick={() => toggleMaskVisibility(item.material)}
+                        className="ms-3"
+                        title={
+                          visibleMasks[item.material]
+                            ? "Hide mask"
+                            : "Show mask"
+                        }
+                      />
                     </div>
-                    <Button
-                      type="text"
-                      icon={
-                        visibleMasks[item.material] ? (
-                          <EyeOutlined />
-                        ) : (
-                          <EyeInvisibleOutlined />
-                        )
-                      }
-                      onClick={() => toggleMaskVisibility(item.material)}
-                      className="ms-3"
-                      title={
-                        visibleMasks[item.material] ? "Hide mask" : "Show mask"
-                      }
-                    />
                   </div>
-                  <div className="d-flex align-items-center">
-                    {calculatedAreas[item.material] ? (
-                      <span className="text-success fw-bold me-3 bg-success bg-opacity-10 px-2 py-1 rounded">
-                        {calculatedAreas[item.material]} m²
-                      </span>
-                    ) : (
-                      <span className="text-muted me-3">--- m²</span>
-                    )}
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() => calculateArea(item.material)}
-                      disabled={
-                        calculating[item.material] || !calibrationDistance
-                      }
-                      loading={calculating[item.material]}
-                    >
-                      Calculate
-                    </Button>
+
+                  {/* Distance input and area calculation section */}
+                  <div className="mt-3 pt-3 border-top">
+                    <Row gutter={16} align="middle">
+                      <Col span={8}>
+                        <label className="form-label small mb-1">
+                          Real-world Distance (meters)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="e.g., 20.0"
+                          value={segmentDistances[item.material] || ""}
+                          onChange={(e) =>
+                            setSegmentDistances((prev) => ({
+                              ...prev,
+                              [item.material]: e.target.value,
+                            }))
+                          }
+                          size="small"
+                        />
+                        <div className="text-muted small mt-1">
+                          Enter known distance for this segment
+                        </div>
+                      </Col>
+                      <Col span={8}>
+                        {calculatedAreas[item.material] ? (
+                          <div className="text-center">
+                            <div className="text-white fw-bold bg-success px-3 py-2 rounded shadow-sm">
+                              Surface Area: {calculatedAreas[item.material]} m²
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center">
+                            <div className="text-muted bg-light px-3 py-2 rounded border">
+                              --- m²
+                            </div>
+                          </div>
+                        )}
+                      </Col>
+                      <Col span={8}>
+                        <Button
+                          type="primary"
+                          onClick={() => calculateArea(item.material)}
+                          disabled={
+                            calculating[item.material] ||
+                            !segmentDistances[item.material]
+                          }
+                          loading={calculating[item.material]}
+                          block
+                        >
+                          Calculate Area
+                        </Button>
+                      </Col>
+                    </Row>
                   </div>
                 </div>
               ))}

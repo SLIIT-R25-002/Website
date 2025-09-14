@@ -961,9 +961,9 @@ const HeatIslandDetector = () => {
                       <td style={{ minWidth: 160 }}>
                         {/* Display selected materials as badges */}
                         <div className="mb-2">
-                          {(seg.materialCandidates && seg.materialCandidates.length > 0 ? seg.materialCandidates : [seg.material].filter(Boolean)).map((material, idx) => (
+                          {(seg.materialCandidates && seg.materialCandidates.length > 0 ? seg.materialCandidates : [seg.material].filter(Boolean)).map((material) => (
                             <Badge 
-                              key={`${seg.id}-${material}-${idx}`}
+                              key={`${seg.id}-${material}`}
                               bg="primary" 
                               className="me-1 mb-1 d-inline-flex align-items-center"
                               style={{ 

@@ -33,14 +33,19 @@ const toApiSegments = (segments) =>
   segments.map((s) => {
     const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
     const mat = normalizeMaterial(s.material, s.label);
+    const areaFromList = Array.isArray(s.areaForPercentage)
+      ? s.areaForPercentage.reduce((a, b) => a + Number(b || 0), 0)
+      : null;
+
     return {
       label: String(s.label || '').trim(),
       material: String(mat || '').toLowerCase().trim(),
       temp: num(s.temp),
       humidity: num(s.humidity),
-      area: num(s.area),
+      area: num(s.area ?? areaFromList),   // ✅ sends the proper sum
     };
   });
+
 
 // Shared image payload builder
 const buildImagePayload = (item) => {
@@ -96,35 +101,37 @@ const mapFsSegmentArrayToLocal = (seg) => {
 };
 
 const mapFsSegmentSubdocToLocal = (seg) => {
-  
-  const list = Array.isArray(seg?.materials)
-    ? seg.materials
+  // materials as you already do...
+  const list = Array.isArray(seg?.materials) ? seg.materials
     : (Array.isArray(seg?.material) ? seg.material : [seg?.material]).filter(Boolean);
-
   const candidates = list
     .map((m) => normalizeMaterial(m, seg?.label))
     .map((m) => String(m || '').toLowerCase().trim())
     .filter((m) => materialOptions.includes(m));
-
   if (candidates.length === 0 && String(seg?.label ?? '').toLowerCase().trim() === 'vegetation') {
     candidates.push('grass');
   }
 
-  const chosen = candidates[0] || '';
+  // ✅ area handling
+  const rawAreas = Array.isArray(seg?.area) ? seg.area
+                  : (Number.isFinite(Number(seg?.surfaceArea)) ? [Number(seg.surfaceArea)] : []);
+  const areaSum = rawAreas.reduce((a, b) => a + Number(b || 0), 0);
+
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  
+
   return {
     id: uid(),
     label: String(seg?.label ?? ''),
-    material: chosen,
+    material: candidates[0] || '',
     materialCandidates: candidates,
     temp: n(seg?.temperature),
     humidity: n(seg?.humidity),
-    area: n(seg?.area?.length > 0 ? seg?.area : seg?.surfaceArea),
-    areaForPercentage: (seg?.area?.length > 0 ? seg?.area : seg?.surfaceArea),
+    area: areaSum,                 
+    areaForPercentage: rawAreas,   
     segmentImageUrl: String(seg?.segmentImageUrl ?? ''),
   };
 };
+
 
 /* ----------------------------- New manual item ----------------------------- */
 const newManualItem = () => ({
@@ -1077,7 +1084,7 @@ const HeatIslandDetector = () => {
                         {/* {JSON.stringify(seg, null, 2)} */}
                         <Form.Control
                           type="number"
-                          value={seg.areaForPercentage?.reduce((a, b) => parseFloat(a) + parseFloat(b), 0)}
+                          value={seg.area}
                           onChange={(e) => updateSegmentField(item.id, seg.id, 'area', e.target.value)}
                         />
                       </td>
@@ -1129,7 +1136,7 @@ const HeatIslandDetector = () => {
                             <strong>{det.location || det.label || '(segment)'}</strong>
                             <span className="ms-2 badge bg-secondary">{flag ? 'Heat Island' : 'No Heat Island'}</span>
                             <div className="small text-muted">
-                              Material: {det.material} | Temp: {det.temperature}°C | Humidity: {det.humidity}% | Area: {det.area} m²
+                              Material: {det.material} | Temp: {det.temperature}°C | Humidity: {det.humidity}% | Area: {det.area} cm²
                             </div>
                           </div>
                         );

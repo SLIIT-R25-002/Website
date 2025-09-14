@@ -34,6 +34,8 @@ import {
   getDocs,
   deleteDoc,
   doc,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 
@@ -42,19 +44,37 @@ const { Title, Text } = Typography;
 // Utility function to convert Firestore timestamp to JavaScript timestamp
 const getTimestampValue = (timestamp) => {
   if (!timestamp) return 0;
-  
-  // If it's already a number (JavaScript timestamp), return it
-  if (typeof timestamp === 'number') {
-    return timestamp;
-  }
-  
-  // If it's a Firestore timestamp object
-  if (timestamp && typeof timestamp === 'object' && timestamp.seconds !== undefined) {
-    // Convert Firestore timestamp to JavaScript timestamp (milliseconds)
+  if (typeof timestamp === "number") return timestamp;
+  if (timestamp && typeof timestamp === "object" && timestamp.seconds !== undefined) {
     return timestamp.seconds * 1000 + Math.floor(timestamp.nanoseconds / 1000000);
   }
-  
   return 0;
+};
+
+// 🔽 Helper to mark a session completed once detection + recommendation exist
+const markSessionCompletedIfNeeded = async (sessionId, currentStatus) => {
+  try {
+    if (currentStatus === "completed") return;
+
+    const imagesSnap = await getDocs(collection(db, "sessions", sessionId, "images"));
+    let shouldComplete = false;
+
+    imagesSnap.forEach((img) => {
+      const d = img.data();
+      if (d?.detection?.is_heat_island && d?.recommendation) {
+        shouldComplete = true;
+      }
+    });
+
+    if (shouldComplete) {
+      await updateDoc(doc(db, "sessions", sessionId), {
+        status: "completed",
+        completedAt: serverTimestamp(),
+      });
+    }
+  } catch (e) {
+    console.error("markSessionCompletedIfNeeded error:", e);
+  }
 };
 
 const SessionsList = ({ onBack, onViewSession }) => {
@@ -73,23 +93,16 @@ const SessionsList = ({ onBack, onViewSession }) => {
   // Load all sessions
   useEffect(() => {
     const q = query(collection(db, "sessions"), orderBy("createdAt", "desc"));
-    
+
     const unsubscribe = onSnapshot(
       q,
       async (snapshot) => {
         const sessionsData = [];
-        const newStats = {
-          total: 0,
-          inProgress: 0,
-          completed: 0,
-          totalImages: 0,
-        };
+        const newStats = { total: 0, inProgress: 0, completed: 0, totalImages: 0 };
 
-        // Process sessions sequentially to avoid overwhelming the database
         const processSession = async (docSnapshot) => {
           const sessionData = { id: docSnapshot.id, ...docSnapshot.data() };
-          
-          // Count images for each session
+
           try {
             const imagesSnapshot = await getDocs(collection(db, "sessions", docSnapshot.id, "images"));
             sessionData.imageCount = imagesSnapshot.size;
@@ -99,17 +112,15 @@ const SessionsList = ({ onBack, onViewSession }) => {
             sessionData.imageCount = 0;
           }
 
+          // 🔽 update session if any image qualifies
+          await markSessionCompletedIfNeeded(docSnapshot.id, sessionData.status);
+
           sessionsData.push(sessionData);
           newStats.total += 1;
-          
-          if (sessionData.status === "inprogress") {
-            newStats.inProgress += 1;
-          } else if (sessionData.status === "completed") {
-            newStats.completed += 1;
-          }
+          if (sessionData.status === "inprogress") newStats.inProgress += 1;
+          else if (sessionData.status === "completed") newStats.completed += 1;
         };
 
-        // Process all sessions
         await Promise.all(snapshot.docs.map(processSession));
 
         setSessions(sessionsData);
@@ -130,19 +141,31 @@ const SessionsList = ({ onBack, onViewSession }) => {
   const handleViewSessionDetails = async (session) => {
     setSelectedSession(session);
     setSessionDetailsVisible(true);
-    
-    // Load images for this session
+
     const unsubscribeImages = onSnapshot(
       collection(db, "sessions", session.id, "images"),
       (imagesSnapshot) => {
         const images = [];
+        let shouldComplete = false;
+
         imagesSnapshot.forEach((imageDoc) => {
-          images.push({ id: imageDoc.id, ...imageDoc.data() });
+          const data = imageDoc.data();
+          images.push({ id: imageDoc.id, ...data });
+          if (data?.detection?.is_heat_island && data?.recommendation) {
+            shouldComplete = true;
+          }
         });
-        
-        // Sort images by timestamp
+
         images.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
         setSessionImages(images);
+
+        // 🔽 live update of session status
+        if (shouldComplete && session.status !== "completed") {
+          updateDoc(doc(db, "sessions", session.id), {
+            status: "completed",
+            completedAt: serverTimestamp(),
+          }).catch((e) => console.error("update session status error:", e));
+        }
       },
       (error) => {
         console.error("Error loading session images:", error);
@@ -150,18 +173,11 @@ const SessionsList = ({ onBack, onViewSession }) => {
       }
     );
 
-    // Store unsubscribe function to clean up later
-    setSelectedSession(prevSession => ({ 
-      ...prevSession, 
-      ...session, 
-      unsubscribeImages 
-    }));
+    setSelectedSession((prev) => ({ ...prev, ...session, unsubscribeImages }));
   };
 
   const handleCloseSessionDetails = () => {
-    if (selectedSession?.unsubscribeImages) {
-      selectedSession.unsubscribeImages();
-    }
+    if (selectedSession?.unsubscribeImages) selectedSession.unsubscribeImages();
     setSessionDetailsVisible(false);
     setSelectedSession(null);
     setSessionImages([]);
@@ -170,25 +186,19 @@ const SessionsList = ({ onBack, onViewSession }) => {
   // Delete session function
   const handleDeleteSession = async (sessionId) => {
     try {
-      // First, delete all images in the session
       const imagesSnapshot = await getDocs(collection(db, "sessions", sessionId, "images"));
       const deleteImagePromises = imagesSnapshot.docs.map(async (imageDoc) => {
-        // Delete segments for each image
         const segmentsSnapshot = await getDocs(collection(db, "sessions", sessionId, "images", imageDoc.id, "segments"));
-        const deleteSegmentPromises = segmentsSnapshot.docs.map(segmentDoc =>
+        const deleteSegmentPromises = segmentsSnapshot.docs.map((segmentDoc) =>
           deleteDoc(doc(db, "sessions", sessionId, "images", imageDoc.id, "segments", segmentDoc.id))
         );
         await Promise.all(deleteSegmentPromises);
-        
-        // Delete the image document
         return deleteDoc(doc(db, "sessions", sessionId, "images", imageDoc.id));
       });
-      
+
       await Promise.all(deleteImagePromises);
-      
-      // Finally, delete the session document
       await deleteDoc(doc(db, "sessions", sessionId));
-      
+
       message.success("Session deleted successfully!");
     } catch (error) {
       console.error("Error deleting session:", error);
@@ -196,26 +206,32 @@ const SessionsList = ({ onBack, onViewSession }) => {
     }
   };
 
-  // Confirm delete with modal
   const confirmDeleteSession = (session) => {
     Modal.confirm({
-      title: 'Delete Session',
+      title: "Delete Session",
       icon: <ExclamationCircleOutlined />,
       content: (
         <div>
           <p>Are you sure you want to delete this session?</p>
-          <p><strong>Session ID:</strong> <code>{session.id}</code></p>
-          <p><strong>Created:</strong> {new Date(getTimestampValue(session.createdAt)).toLocaleString()}</p>
-          <p><strong>Images:</strong> {session.imageCount || 0}</p>
+          <p>
+            <strong>Session ID:</strong> <code>{session.id}</code>
+          </p>
+          <p>
+            <strong>Created:</strong>{" "}
+            {new Date(getTimestampValue(session.createdAt)).toLocaleString()}
+          </p>
+          <p>
+            <strong>Images:</strong> {session.imageCount || 0}
+          </p>
           <br />
-          <p style={{ color: '#ff4d4f', fontWeight: 'bold' }}>
+          <p style={{ color: "#ff4d4f", fontWeight: "bold" }}>
             This action cannot be undone. All images and data in this session will be permanently deleted.
           </p>
         </div>
       ),
-      okText: 'Delete Session',
-      okType: 'danger',
-      cancelText: 'Cancel',
+      okText: "Delete Session",
+      okType: "danger",
+      cancelText: "Cancel",
       width: 500,
       onOk: () => handleDeleteSession(session.id),
     });
@@ -264,12 +280,8 @@ const SessionsList = ({ onBack, onViewSession }) => {
         const date = new Date(getTimestampValue(timestamp));
         return (
           <Space direction="vertical" size="small">
-            <Text style={{ fontSize: "12px" }}>
-              {date.toLocaleDateString()}
-            </Text>
-            <Text type="secondary" style={{ fontSize: "11px" }}>
-              {date.toLocaleTimeString()}
-            </Text>
+            <Text style={{ fontSize: "12px" }}>{date.toLocaleDateString()}</Text>
+            <Text type="secondary" style={{ fontSize: "11px" }}>{date.toLocaleTimeString()}</Text>
           </Space>
         );
       },
@@ -297,10 +309,7 @@ const SessionsList = ({ onBack, onViewSession }) => {
       key: "imageCount",
       width: 100,
       render: (count) => (
-        <Badge
-          count={count || 0}
-          style={{ backgroundColor: count > 0 ? "#52c41a" : "#d9d9d9" }}
-        />
+        <Badge count={count || 0} style={{ backgroundColor: count > 0 ? "#52c41a" : "#d9d9d9" }} />
       ),
       sorter: (a, b) => (a.imageCount || 0) - (b.imageCount || 0),
     },
@@ -311,22 +320,9 @@ const SessionsList = ({ onBack, onViewSession }) => {
       render: (_, session) => (
         <Space size="small">
           <Tooltip title="View Details">
-            <Button
-              type="text"
-              size="small"
-              icon={<EyeOutlined />}
-              onClick={() => handleViewSessionDetails(session)}
-            />
+            <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => handleViewSessionDetails(session)} />
           </Tooltip>
-          <Button
-            type="link"
-            size="small"
-            onClick={() => {
-              if (onViewSession) {
-                onViewSession(session.id);
-              }
-            }}
-          >
+          <Button type="link" size="small" onClick={() => onViewSession?.(session.id)}>
             Open
           </Button>
           <Tooltip title="Delete Session">
@@ -350,16 +346,7 @@ const SessionsList = ({ onBack, onViewSession }) => {
       key: "imageUrl",
       width: 80,
       render: (url) => (
-        <img
-          src={url}
-          alt="Session"
-          style={{
-            width: "60px",
-            height: "60px",
-            objectFit: "cover",
-            borderRadius: "4px",
-          }}
-        />
+        <img src={url} alt="Session" style={{ width: "60px", height: "60px", objectFit: "cover", borderRadius: "4px" }} />
       ),
     },
     {
@@ -370,12 +357,8 @@ const SessionsList = ({ onBack, onViewSession }) => {
         const date = new Date(getTimestampValue(timestamp));
         return (
           <Space direction="vertical" size="small">
-            <Text style={{ fontSize: "12px" }}>
-              {date.toLocaleDateString()}
-            </Text>
-            <Text type="secondary" style={{ fontSize: "11px" }}>
-              {date.toLocaleTimeString()}
-            </Text>
+            <Text style={{ fontSize: "12px" }}>{date.toLocaleDateString()}</Text>
+            <Text type="secondary" style={{ fontSize: "11px" }}>{date.toLocaleTimeString()}</Text>
           </Space>
         );
       },
@@ -400,10 +383,7 @@ const SessionsList = ({ onBack, onViewSession }) => {
       dataIndex: "segments",
       key: "segments",
       render: (segments) => (
-        <Badge
-          count={segments?.length || 0}
-          style={{ backgroundColor: segments?.length > 0 ? "#52c41a" : "#d9d9d9" }}
-        />
+        <Badge count={segments?.length || 0} style={{ backgroundColor: segments?.length > 0 ? "#52c41a" : "#d9d9d9" }} />
       ),
     },
   ];
@@ -415,11 +395,7 @@ const SessionsList = ({ onBack, onViewSession }) => {
         <Row justify="space-between" align="middle">
           <Col>
             <Space>
-              <Button
-                type="text"
-                icon={<ArrowLeftOutlined />}
-                onClick={onBack}
-              >
+              <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>
                 Back to Capture
               </Button>
               <Title level={3} style={{ margin: 0 }}>
@@ -428,56 +404,33 @@ const SessionsList = ({ onBack, onViewSession }) => {
             </Space>
           </Col>
           <Col>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => window.location.reload()}
-            >
+            <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>
               Refresh
             </Button>
           </Col>
         </Row>
       </Card>
 
-      {/* Statistics Cards */}
+      {/* Statistics */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={6}>
           <Card>
-            <Statistic
-              title="Total Sessions"
-              value={stats.total}
-              prefix={<CalendarOutlined />}
-              valueStyle={{ color: "#1890ff" }}
-            />
+            <Statistic title="Total Sessions" value={stats.total} prefix={<CalendarOutlined />} valueStyle={{ color: "#1890ff" }} />
           </Card>
         </Col>
         <Col xs={24} sm={6}>
           <Card>
-            <Statistic
-              title="In Progress"
-              value={stats.inProgress}
-              prefix={<SyncOutlined />}
-              valueStyle={{ color: "#faad14" }}
-            />
+            <Statistic title="In Progress" value={stats.inProgress} prefix={<SyncOutlined />} valueStyle={{ color: "#faad14" }} />
           </Card>
         </Col>
         <Col xs={24} sm={6}>
           <Card>
-            <Statistic
-              title="Completed"
-              value={stats.completed}
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: "#52c41a" }}
-            />
+            <Statistic title="Completed" value={stats.completed} prefix={<CheckCircleOutlined />} valueStyle={{ color: "#52c41a" }} />
           </Card>
         </Col>
         <Col xs={24} sm={6}>
           <Card>
-            <Statistic
-              title="Total Images"
-              value={stats.totalImages}
-              prefix={<CameraOutlined />}
-              valueStyle={{ color: "#722ed1" }}
-            />
+            <Statistic title="Total Images" value={stats.totalImages} prefix={<CameraOutlined />} valueStyle={{ color: "#722ed1" }} />
           </Card>
         </Col>
       </Row>
@@ -493,8 +446,7 @@ const SessionsList = ({ onBack, onViewSession }) => {
             pageSize: 10,
             showSizeChanger: true,
             showQuickJumper: true,
-            showTotal: (total, range) =>
-              `${range[0]}-${range[1]} of ${total} sessions`,
+            showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} sessions`,
           }}
           scroll={{ x: 800 }}
         />
@@ -519,38 +471,36 @@ const SessionsList = ({ onBack, onViewSession }) => {
           <Button key="close" onClick={handleCloseSessionDetails}>
             Close
           </Button>,
-          ...(selectedSession ? [(
-            <Button
-              key="delete"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => {
-                confirmDeleteSession(selectedSession);
-                handleCloseSessionDetails();
-              }}
-            >
-              Delete Session
-            </Button>
-          ), (
-            <Button
-              key="open"
-              type="primary"
-              onClick={() => {
-                if (onViewSession) {
-                  onViewSession(selectedSession.id);
-                }
-                handleCloseSessionDetails();
-              }}
-            >
-              Open Session
-            </Button>
-          )] : []),
+          ...(selectedSession
+            ? [
+                <Button
+                  key="delete"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => {
+                    confirmDeleteSession(selectedSession);
+                    handleCloseSessionDetails();
+                  }}
+                >
+                  Delete Session
+                </Button>,
+                <Button
+                  key="open"
+                  type="primary"
+                  onClick={() => {
+                    onViewSession?.(selectedSession.id);
+                    handleCloseSessionDetails();
+                  }}
+                >
+                  Open Session
+                </Button>,
+              ]
+            : []),
         ]}
         width={800}
       >
         {selectedSession && (
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
-            {/* Session Info */}
             <Card size="small" title="Session Information">
               <Row gutter={[16, 16]}>
                 <Col span={12}>
@@ -564,24 +514,15 @@ const SessionsList = ({ onBack, onViewSession }) => {
                 <Col span={12}>
                   <Space direction="vertical" size="small">
                     <Text strong>Created:</Text>
-                    <Text>
-                      {new Date(getTimestampValue(selectedSession.createdAt)).toLocaleString()}
-                    </Text>
+                    <Text>{new Date(getTimestampValue(selectedSession.createdAt)).toLocaleString()}</Text>
                   </Space>
                 </Col>
               </Row>
             </Card>
 
-            {/* Images Table */}
             <Card size="small" title={`Images (${sessionImages.length})`}>
               {sessionImages.length > 0 ? (
-                <Table
-                  columns={imageColumns}
-                  dataSource={sessionImages}
-                  rowKey="id"
-                  pagination={{ pageSize: 5 }}
-                  size="small"
-                />
+                <Table columns={imageColumns} dataSource={sessionImages} rowKey="id" pagination={{ pageSize: 5 }} size="small" />
               ) : (
                 <div style={{ textAlign: "center", padding: "20px" }}>
                   <CameraOutlined style={{ fontSize: "24px", color: "#d9d9d9" }} />

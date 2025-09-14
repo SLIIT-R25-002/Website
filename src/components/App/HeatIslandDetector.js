@@ -15,21 +15,14 @@ import { ref as storageRef, uploadString, getDownloadURL } from 'firebase/storag
 import { db, storage } from '../../firebase';
 import { exportUHIItemPDF, exportUHIMultiPDF } from './ReportGenerator';
 
-// 🔽 add the report helpers
 
-/* ----------------------- Utilities and converters ---------------------- */
 // Normalize material names, optionally using the segment label as a hint
 const normalizeMaterial = (material, label) => {
   const m = String(material ?? '').toLowerCase().trim();
   const lbl = String(label ?? '').toLowerCase().trim();
 
-  // Brick -> concrete
-  // if (m === 'brick') return 'concrete';
 
-  // If label says vegetation, force grass when material is empty/unknown or "vegetation"
   if ((!m || m === 'vegetation') && lbl === 'vegetation') return 'grass';
-
-  // If someone literally wrote "vegetation" as the material, treat it as grass
   if (m === 'vegetation') return 'grass';
 
   return m;
@@ -85,7 +78,6 @@ const materialOptions = [
 
 /* ----------------------------- Mapping helpers ----------------------------- */
 
-// Legacy array item (stored on image doc at images[].segments[])
 const mapFsSegmentArrayToLocal = (seg) => {
   const normalized = normalizeMaterial(seg?.material, seg?.label);
   const rawMaterial = String(normalized ?? '').toLowerCase().trim();
@@ -98,14 +90,12 @@ const mapFsSegmentArrayToLocal = (seg) => {
     temp: n(seg?.temperature),
     humidity: n(seg?.humidity),
     area: n(seg?.surfaceArea),
-    segmentImageUrl: '', // legacy array usually doesn't carry per-mask image
+    segmentImageUrl: '', 
     materialCandidates: rawMaterial ? [rawMaterial] : [],
   };
 };
 
-// Sub-collection document at images/{imageId}/segments/{segDoc}
 const mapFsSegmentSubdocToLocal = (seg) => {
-  // Accept material as array or string; also accept "materials"
   
   const list = Array.isArray(seg?.materials)
     ? seg.materials
@@ -116,7 +106,6 @@ const mapFsSegmentSubdocToLocal = (seg) => {
     .map((m) => String(m || '').toLowerCase().trim())
     .filter((m) => materialOptions.includes(m));
 
-  // If we still have nothing but the label is vegetation, prefer "grass"
   if (candidates.length === 0 && String(seg?.label ?? '').toLowerCase().trim() === 'vegetation') {
     candidates.push('grass');
   }
@@ -131,7 +120,6 @@ const mapFsSegmentSubdocToLocal = (seg) => {
     materialCandidates: candidates,
     temp: n(seg?.temperature),
     humidity: n(seg?.humidity),
-    // support either "area" or "surfaceArea"
     area: n(seg?.area?.length > 0 ? seg?.area : seg?.surfaceArea),
     areaForPercentage: (seg?.area?.length > 0 ? seg?.area : seg?.surfaceArea),
     segmentImageUrl: String(seg?.segmentImageUrl ?? ''),
@@ -141,11 +129,11 @@ const mapFsSegmentSubdocToLocal = (seg) => {
 /* ----------------------------- New manual item ----------------------------- */
 const newManualItem = () => ({
   id: uid(),
-  source: 'manual',          // 'manual' | 'fs'
+  source: 'manual',          
   fsDocId: null,
   imageUrl: '',
   imageFile: null,
-  imagePreview: null,        // dataURL
+  imagePreview: null,        
   timestamp: Date.now(),
   gps: null,
   gyro: null,
@@ -168,7 +156,7 @@ const newManualItem = () => ({
 
   // --- Chat state (per card) ---
   chatOpen: false,
-  chatMessages: [],     // [{ role: 'user'|'assistant', text: string, timestamp: number }]
+  chatMessages: [],     
   chatInput: '',
   chatLoading: false,
   chatSuggestions: [],
@@ -246,19 +234,16 @@ const buildChatSuggestions = (item) => {
 /* ================================= Component ================================ */
 const HeatIslandDetector = () => {
   const [sessionId, setSessionId] = useState(null);
-  const [items, setItems] = useState([]); // fs + manual
+  const [items, setItems] = useState([]); 
   const [globalError, setGlobalError] = useState(null);
 
-  // keep a ref in sync (used by exportOne/exportAll and listeners)
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
 
-  // Segment sub-collection data cache: { [imageDocId]: localSegments[] }
   const [segmentDocsByImage, setSegmentDocsByImage] = useState({});
-  const segmentUnsubsRef = useRef({}); // { [imageDocId]: () => unsubscribe }
+  const segmentUnsubsRef = useRef({}); 
   const segmentDocsRef = useRef(segmentDocsByImage);
 
-  // keep refs in sync
   useEffect(() => { segmentDocsRef.current = segmentDocsByImage; }, [segmentDocsByImage]);
 
   // chat scroll refs
@@ -269,7 +254,7 @@ const HeatIslandDetector = () => {
     if (el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100);
   };
 
-  // Load sessionId from localStorage (CaptureImages sets this)
+  // Load sessionId from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('heatscape_session_id');
     setSessionId(saved || null);
@@ -319,12 +304,10 @@ const HeatIslandDetector = () => {
             );
           }
 
-          // Legacy array segments from image doc (often contains label/area)
           const arraySegments = Array.isArray(data?.segments)
             ? data.segments.map(mapFsSegmentArrayToLocal)
             : [];
 
-          // If we already have sub-docs, use them but backfill label/area from the array when missing
           const subSegments = segmentDocsRef.current[imageId];
           const segments =
             Array.isArray(subSegments) && subSegments.length > 0
@@ -489,11 +472,10 @@ const HeatIslandDetector = () => {
             return { 
               ...s, 
               materialCandidates: normalizedCandidates,
-              material: normalizedCandidates[0] || '' // Set primary material to first candidate
+              material: normalizedCandidates[0] || '' 
             };
           }
           if (field === 'label') {
-            // if label changes to vegetation, and current material is empty/vegetation -> grass
             const nextLabel = String(value ?? '');
             const mat = normalizeMaterial(s.material, nextLabel);
             return { ...s, label: nextLabel, material: mat };
@@ -522,7 +504,7 @@ const HeatIslandDetector = () => {
         timestamp: item.timestamp || Date.now(),
         gps: item.gps || null,
         gyro: item.gyro || null,
-        segments: segmentsFs, // keep array version for compatibility
+        segments: segmentsFs, 
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -539,7 +521,6 @@ const HeatIslandDetector = () => {
   };
 
   const persistSegments = async (imageDocRef, item) => {
-    // Persist array (back-compat). If you later want to also upsert sub-docs, add it here.
     await updateDoc(imageDocRef, {
       segments: segmentsToFs(item.segments),
       updatedAt: serverTimestamp(),
@@ -746,7 +727,7 @@ const HeatIslandDetector = () => {
         ...buildImagePayload(updatedItem),
         message,
         prior_recommendation: updatedItem.recommendation,
-        history: updatedItem.chatMessages.slice(0, -1), // exclude the user message we just added
+        history: updatedItem.chatMessages.slice(0, -1), 
       };
 
       const res = await axios.post(`${API_BASE}/recommend/chat`, payload);
@@ -796,9 +777,9 @@ const HeatIslandDetector = () => {
     }, 200);
   };
 
-  const refreshChatSuggestions = (imageId) => {
-    setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, chatSuggestions: buildChatSuggestions(x) } : x)));
-  };
+  // const refreshChatSuggestions = (imageId) => {
+  //   setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, chatSuggestions: buildChatSuggestions(x) } : x)));
+  // };
 
   const updateChatInput = (imageId, value) => {
     setItems((prev) => prev.map((x) => (x.id === imageId ? { ...x, chatInput: value } : x)));
@@ -815,7 +796,6 @@ const HeatIslandDetector = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // 🔽 Export handlers (placed AFTER items/useRef so ESLint doesn't complain)
   const exportOne = async (imageId) => {
     const item = itemsRef.current.find((x) => x.id === imageId);
     if (!item) return;
@@ -854,7 +834,6 @@ const HeatIslandDetector = () => {
         <Button variant="primary" onClick={recommendAllDetected} disabled={!items.length}>
           Get Recommendations for Detected
         </Button>
-        {/* 🔽 toolbar export all */}
         <Button variant="outline-dark" onClick={exportAll} disabled={!items.length}>
           Export All as PDF
         </Button>
@@ -911,7 +890,6 @@ const HeatIslandDetector = () => {
                 {item.loadingRecommend ? 'Recommending...' : 'Recommend'}
               </Button>
 
-              {/* 🔽 per-card export */}
               <Button
                 size="sm"
                 variant="outline-dark"
@@ -924,7 +902,6 @@ const HeatIslandDetector = () => {
           </Card.Header>
 
           <Card.Body>
-            {/* Image */}
             {item.source === 'manual' ? (
               <>
                 <Form.Group className="mb-3">
@@ -990,7 +967,6 @@ const HeatIslandDetector = () => {
                       </td>
 
                       <td style={{ minWidth: 160 }}>
-                        {/* Display selected materials as badges */}
                         <div className="mb-2">
                           {(seg.materialCandidates && seg.materialCandidates.length > 0 ? seg.materialCandidates : [seg.material].filter(Boolean)).map((material) => (
                             <Badge 
@@ -1034,7 +1010,6 @@ const HeatIslandDetector = () => {
                           )}
                         </div>
                         
-                        {/* Dropdown to add new materials */}
                         <Form.Select
                           value=""
                           onChange={(e) => {
@@ -1050,7 +1025,7 @@ const HeatIslandDetector = () => {
                                   updateSegmentField(item.id, seg.id, 'material', e.target.value);
                                 }
                               }
-                              e.target.value = ''; // Reset dropdown
+                              e.target.value = ''; 
                             }
                           }}
                           style={{ 
@@ -1213,9 +1188,9 @@ const HeatIslandDetector = () => {
                       <div className="mb-3">
                         <div className="d-flex align-items-center mb-2">
                           <span className="me-2 text-muted small fw-bold">💡 Quick Questions:</span>
-                          <Button size="sm" variant="outline-secondary" onClick={() => refreshChatSuggestions(item.id)} title="Refresh suggestions" style={{ fontSize: '12px', padding: '2px 8px' }}>
+                          {/* <Button size="sm" variant="outline-secondary" onClick={() => refreshChatSuggestions(item.id)} title="Refresh suggestions" style={{ fontSize: '12px', padding: '2px 8px' }}>
                             🔄 More
-                          </Button>
+                          </Button> */}
                         </div>
                         <div className="d-flex flex-wrap gap-2">
                           {item.chatSuggestions.map((q) => (

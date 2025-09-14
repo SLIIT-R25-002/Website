@@ -1,5 +1,5 @@
 // src/components/Segment.js (or wherever you have it)
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button, Card, Input, Alert, Progress, Tag, Row, Col } from "antd";
 import {
   SearchOutlined,
@@ -20,7 +20,6 @@ import {
   getDocs,
   query,
   orderBy,
-  serverTimestamp,
   writeBatch,
   doc,
 } from "firebase/firestore";
@@ -28,19 +27,22 @@ import { getStorage, ref, getDownloadURL, uploadBytes } from "firebase/storage";
 import { db } from "../../../firebase";
 // API Configuration
 const API_CONFIG = {
-  BASE_URL: "https://da1b6f385d10.ngrok-free.app",
+  BASE_URL: process.env.REACT_APP_SEGMENT_BASE_URL, // "https://da1b6f385d10.ngrok-free.app",
   ENDPOINTS: {
     ANALYZE: "/analyze",
     CALCULATE_AREA: "/calculate_area",
   },
 };
+
+console.log("Segment API Base URL:", API_CONFIG.BASE_URL);
 const Segment = () => {
   const [currentStep, setCurrentStep] = useState("upload"); // 'upload', 'image-selection', 'processing', 'results'
   const [uploadedImage, setUploadedImage] = useState(null);
   const [analysisResults, setAnalysisResults] = useState(null);
   const [processingStatus, setProcessingStatus] = useState("");
-  const [calibrationDistance, setCalibrationDistance] = useState("");
+  const [segmentDistances, setSegmentDistances] = useState({});
   const [calculatedAreas, setCalculatedAreas] = useState({});
+  const [detailedMaterialAreas, setDetailedMaterialAreas] = useState({});
   const [visibleMasks, setVisibleMasks] = useState({});
   const [calculating, setCalculating] = useState({});
   const [progress, setProgress] = useState(0);
@@ -66,6 +68,86 @@ const Segment = () => {
 
   // Backend API base URL - update this to your actual backend URL
   const API_BASE_URL = API_CONFIG.BASE_URL;
+
+  // State persistence key
+  const STORAGE_KEY = "segmentation_analysis_state";
+
+  // Restore state from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedState = localStorage.getItem(STORAGE_KEY);
+      if (savedState) {
+        const parsedState = JSON.parse(savedState);
+        console.log("Restoring segmentation state:", parsedState);
+
+        // Restore all the critical states
+        if (parsedState.currentStep) setCurrentStep(parsedState.currentStep);
+        if (parsedState.analysisResults)
+          setAnalysisResults(parsedState.analysisResults);
+        if (parsedState.uploadedImage)
+          setUploadedImage(parsedState.uploadedImage);
+        if (parsedState.segmentDistances)
+          setSegmentDistances(parsedState.segmentDistances);
+        if (parsedState.calculatedAreas)
+          setCalculatedAreas(parsedState.calculatedAreas);
+        if (parsedState.detailedMaterialAreas)
+          setDetailedMaterialAreas(parsedState.detailedMaterialAreas);
+        if (parsedState.visibleMasks) setVisibleMasks(parsedState.visibleMasks);
+        if (parsedState.availableImages)
+          setAvailableImages(parsedState.availableImages);
+        if (parsedState.selectedImageIndex !== undefined)
+          setSelectedImageIndex(parsedState.selectedImageIndex);
+        if (parsedState.segmentsSaved !== undefined)
+          setSegmentsSaved(parsedState.segmentsSaved);
+      }
+    } catch (error) {
+      console.error("Error restoring segmentation state:", error);
+      // Clear corrupted data
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  // Save state to localStorage whenever critical states change
+  useEffect(() => {
+    const stateToSave = {
+      currentStep,
+      analysisResults,
+      uploadedImage,
+      segmentDistances,
+      calculatedAreas,
+      detailedMaterialAreas,
+      visibleMasks,
+      availableImages,
+      selectedImageIndex,
+      segmentsSaved,
+    };
+
+    // Only save if we have meaningful data (not just initial empty state)
+    if (
+      currentStep !== "upload" ||
+      analysisResults ||
+      Object.keys(calculatedAreas).length > 0
+    ) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+        console.log("Saved segmentation state to localStorage");
+      } catch (error) {
+        console.error("Error saving segmentation state:", error);
+      }
+    }
+  }, [
+    currentStep,
+    analysisResults,
+    uploadedImage,
+    segmentDistances,
+    calculatedAreas,
+    detailedMaterialAreas,
+    visibleMasks,
+    availableImages,
+    selectedImageIndex,
+    segmentsSaved,
+  ]);
+
   // Helper function to get image blob from Firebase Storage using storage path
 
   const getImageBlobFromStorage = async (imagePath) => {
@@ -224,7 +306,43 @@ const Segment = () => {
       setTimeout(() => setCurrentStep("upload"), 3000);
     }
   };
+
+  // Function to clear stored analysis state (for starting fresh analysis)
+  const clearStoredState = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      console.log("Cleared stored segmentation state");
+    } catch (error) {
+      console.error("Error clearing stored state:", error);
+    }
+  };
+
+  // Function to reset analysis and go back to upload step
+  const resetAnalysis = () => {
+    // Clear stored state
+    clearStoredState();
+
+    // Reset all state variables to initial values
+    setCurrentStep("upload");
+    setUploadedImage(null);
+    setAnalysisResults(null);
+    setProcessingStatus("");
+    setSegmentDistances({});
+    setCalculatedAreas({});
+    setDetailedMaterialAreas({});
+    setVisibleMasks({});
+    setCalculating({});
+    setProgress(0);
+    setAvailableImages([]);
+    setSelectedImageIndex(0);
+    setSaving(false);
+    setSaveStatus("");
+    setSegmentsSaved(false);
+  };
+
   const startAnalysis = async () => {
+    // Clear previous analysis data when starting new analysis
+    clearStoredState();
     setCurrentStep("processing");
     setProcessingStatus("Loading latest image from session...");
     try {
@@ -293,11 +411,14 @@ const Segment = () => {
     await proceedWithImageAnalysis(selectedImage);
   };
   const calculateArea = async (material) => {
+    const materialDistance = segmentDistances[material];
     if (
-      !calibrationDistance ||
-      Number.isNaN(Number.parseFloat(calibrationDistance))
+      !materialDistance ||
+      Number.isNaN(Number.parseFloat(materialDistance))
     ) {
-      setProcessingStatus("Please enter a valid calibration distance first.");
+      setProcessingStatus(
+        `Please enter a valid distance for ${material} segment first.`
+      );
       return;
     }
     setCalculating((prev) => ({ ...prev, [material]: true }));
@@ -313,7 +434,7 @@ const Segment = () => {
       const requestBody = {
         image_filename: uploadedImage.name,
         mask_base64: materialData.mask_base64,
-        real_distance: parseFloat(calibrationDistance),
+        real_distance: parseFloat(materialDistance),
       };
       console.log("Calculating area for:", material, requestBody);
       // Call backend calculate_area endpoint
@@ -333,10 +454,45 @@ const Segment = () => {
       }
       const areaData = await response.json();
       console.log("Area calculation response:", areaData);
-      // Update calculated areas with the result
+
+      // Convert area from m² to cm² (1 m² = 10,000 cm²)
+      const totalAreaCm2 = areaData.surface_area * 10000;
+
+      // Calculate individual material areas based on material breakdown
+      const materialAreas = {};
+
+      // Check if material breakdown exists for this segment
+      if (
+        analysisResults?.material_breakdown &&
+        analysisResults.material_breakdown[material]
+      ) {
+        const breakdown = analysisResults.material_breakdown[material];
+        console.log(`Material breakdown for ${material}:`, breakdown);
+
+        // Calculate area for each individual material
+        breakdown.forEach((mat) => {
+          const materialArea = (totalAreaCm2 * mat.percentage) / 100;
+          materialAreas[`${mat.material}_area`] = materialArea.toFixed(1);
+        });
+
+        console.log(
+          `Individual material areas for ${material}:`,
+          materialAreas
+        );
+      }
+
+      // Store both total and individual material areas
       setCalculatedAreas((prev) => ({
         ...prev,
-        [material]: areaData.surface_area.toFixed(1),
+        [material]: (totalAreaCm2 / 10000).toFixed(1), // Keep displaying in m² for compatibility
+      }));
+
+      setDetailedMaterialAreas((prev) => ({
+        ...prev,
+        [material]: {
+          totalArea_cm2: totalAreaCm2.toFixed(1),
+          materialAreas,
+        },
       }));
     } catch (error) {
       console.error("Error calculating area:", error);
@@ -569,22 +725,36 @@ const Segment = () => {
         const materialsArray = getMaterialsArray(item.segment.material);
         console.log(`Materials for ${item.segment.material}:`, materialsArray);
 
+        // Get detailed material areas for this segment
+        const detailedAreas = detailedMaterialAreas[item.segment.material];
+
+        // Build area array similar to materials array
+        let areasArray = [];
+        if (detailedAreas && detailedAreas.materialAreas) {
+          // Create area array matching the materials array order
+          areasArray = materialsArray.map((material) => {
+            const areaKey = `${material}_area`;
+            return detailedAreas.materialAreas[areaKey] || 0;
+          });
+        }
+
+        // Build segment data
         const segmentData = {
           sessionId,
-          originalImageId: uploadedImage?.id || null,
-          originalImageName: uploadedImage?.name || null,
-          originalImageURL: uploadedImage?.url || null,
-          material: item.segment.material,
-          materialType: item.segment.materialType,
-          color: item.segment.color,
+          label: item.segment.material,
           segmentImageUrl: item.maskImageUrl,
-          surfaceArea: item.surfaceArea,
-          calibrationDistance: calibrationDistance || null,
           hasAreaCalculation: !!item.surfaceArea,
-          materials: materialsArray, // Add materials as string array
-          timestamp: serverTimestamp(),
-          createdAt: new Date().toISOString(),
+          material: materialsArray,
+          area:
+            areasArray.length > 0
+              ? areasArray
+              : [parseFloat(item.surfaceArea) * 10000 || 0], // Convert m² to cm² for compatibility
+          totalArea_cm2: detailedAreas
+            ? parseFloat(detailedAreas.totalArea_cm2)
+            : parseFloat(item.surfaceArea) * 10000 || 0,
         };
+
+        console.log(`Segment data for ${item.segment.material}:`, segmentData);
 
         const segmentsCollectionRef = collection(
           db,
@@ -836,21 +1006,22 @@ const Segment = () => {
   return (
     <div className="container py-4">
       {/* Header */}
-      <Card className="mb-4 d-flex align-items-center flex-wrap">
-        <div className="flex-grow-1">
-          <h3 className="mb-1">Analysis Complete</h3>
-          <p className="text-muted mb-0">
-            Interact with the results below to calculate material areas.
-          </p>
+      <Card className="mb-4">
+        <div className="d-flex align-items-center justify-content-between flex-wrap">
+          <div>
+            <h3 className="mb-1">Analysis Complete</h3>
+            <p className="text-muted mb-0">
+              Interact with the results below to calculate material areas.
+            </p>
+          </div>
+          <Button
+            type="primary"
+            onClick={resetAnalysis}
+            icon={<SyncOutlined />}
+          >
+            New Analysis
+          </Button>
         </div>
-        {/* <Button
-          type="primary"
-          onClick={resetAnalysis}
-          icon={<SyncOutlined />}
-          className="ms-auto"
-        >
-          New Analysis
-        </Button> */}
       </Card>
 
       {/* Save Section */}
@@ -988,29 +1159,6 @@ const Segment = () => {
             </Row>
           </Card>
           <Card
-            className="mb-3"
-            title={
-              <>
-                <ToolOutlined /> Calibration
-              </>
-            }
-          >
-            <div>
-              <label className="form-label">Real-world Distance (meters)</label>
-              <Input
-                type="number"
-                step="0.1"
-                placeholder="e.g., 20.0"
-                value={calibrationDistance}
-                onChange={(e) => setCalibrationDistance(e.target.value)}
-                className="mb-2"
-              />
-              <div className="text-muted small">
-                Enter a known distance in the image for area calculations
-              </div>
-            </div>
-          </Card>
-          <Card
             title={
               <>
                 <PartitionOutlined /> Segmentation Results
@@ -1021,92 +1169,166 @@ const Segment = () => {
               {analysisResults?.masks.map((item) => (
                 <div
                   key={item.material}
-                  className="d-flex justify-content-between align-items-center p-3 bg-light rounded mb-2 border"
+                  className="p-3 bg-light rounded mb-2 border"
                   style={{
                     borderLeft: `4px solid ${item.color}`,
                   }}
                 >
-                  <div className="d-flex align-items-center">
-                    <div
-                      className="rounded-circle me-3"
-                      style={{
-                        width: "20px",
-                        height: "20px",
-                        backgroundColor: item.color,
-                        border: "2px solid white",
-                        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                      }}
-                    ></div>
-                    <div>
-                      <div className="fw-medium d-flex align-items-center">
-                        {item.material === "building" && "🏢 "}
-                        {item.material === "vegetation" && "🌿 "}
-                        {item.material.charAt(0).toUpperCase() +
-                          item.material.slice(1)}
-                      </div>
-                      <div className="small text-muted">
-                        Segmented area ready for calculation
-                      </div>
-                      {/* Display material breakdown if available */}
-                      {analysisResults?.material_breakdown[item.material] && (
-                        <div className="mt-2">
-                          <small className="text-muted">
-                            Materials:{" "}
-                            {analysisResults.material_breakdown[
-                              item.material
-                            ].map((mat) => (
-                              <span key={mat.material}>
-                                {mat.material}: {mat.percentage.toFixed(1)}%
-                                {analysisResults.material_breakdown[
-                                  item.material
-                                ].indexOf(mat) <
-                                analysisResults.material_breakdown[
-                                  item.material
-                                ].length -
-                                  1
-                                  ? ", "
-                                  : ""}
-                              </span>
-                            ))}
-                          </small>
+                  <div className="d-flex justify-content-between align-items-start">
+                    <div className="d-flex align-items-center">
+                      <div
+                        className="rounded-circle me-3"
+                        style={{
+                          width: "20px",
+                          height: "20px",
+                          backgroundColor: item.color,
+                          border: "2px solid white",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                        }}
+                      ></div>
+                      <div>
+                        <div className="fw-medium d-flex align-items-center">
+                          {item.material === "building" && "🏢 "}
+                          {item.material === "vegetation" && "🌿 "}
+                          {item.material.charAt(0).toUpperCase() +
+                            item.material.slice(1)}
                         </div>
-                      )}
+                        <div className="small text-muted">
+                          Segmented area ready for calculation
+                        </div>
+                        {/* Display material breakdown if available */}
+                        {analysisResults?.material_breakdown[item.material] && (
+                          <div className="mt-2">
+                            <small className="text-muted">
+                              Materials:{" "}
+                              {analysisResults.material_breakdown[
+                                item.material
+                              ].map((mat) => (
+                                <span key={mat.material}>
+                                  {mat.material}: {mat.percentage.toFixed(1)}%
+                                  {analysisResults.material_breakdown[
+                                    item.material
+                                  ].indexOf(mat) <
+                                  analysisResults.material_breakdown[
+                                    item.material
+                                  ].length -
+                                    1
+                                    ? ", "
+                                    : ""}
+                                </span>
+                              ))}
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        type="text"
+                        icon={
+                          visibleMasks[item.material] ? (
+                            <EyeOutlined />
+                          ) : (
+                            <EyeInvisibleOutlined />
+                          )
+                        }
+                        onClick={() => toggleMaskVisibility(item.material)}
+                        className="ms-3"
+                        title={
+                          visibleMasks[item.material]
+                            ? "Hide mask"
+                            : "Show mask"
+                        }
+                      />
                     </div>
-                    <Button
-                      type="text"
-                      icon={
-                        visibleMasks[item.material] ? (
-                          <EyeOutlined />
-                        ) : (
-                          <EyeInvisibleOutlined />
-                        )
-                      }
-                      onClick={() => toggleMaskVisibility(item.material)}
-                      className="ms-3"
-                      title={
-                        visibleMasks[item.material] ? "Hide mask" : "Show mask"
-                      }
-                    />
                   </div>
-                  <div className="d-flex align-items-center">
-                    {calculatedAreas[item.material] ? (
-                      <span className="text-success fw-bold me-3 bg-success bg-opacity-10 px-2 py-1 rounded">
-                        {calculatedAreas[item.material]} m²
-                      </span>
-                    ) : (
-                      <span className="text-muted me-3">--- m²</span>
-                    )}
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() => calculateArea(item.material)}
-                      disabled={
-                        calculating[item.material] || !calibrationDistance
-                      }
-                      loading={calculating[item.material]}
-                    >
-                      Calculate
-                    </Button>
+
+                  {/* Distance input and area calculation section */}
+                  <div className="mt-3 pt-3 border-top">
+                    <Row gutter={16} align="middle">
+                      <Col span={8}>
+                        <label className="form-label small mb-1">
+                          Real-world Distance (meters)
+                        </label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="e.g., 20.0"
+                          value={segmentDistances[item.material] || ""}
+                          onChange={(e) =>
+                            setSegmentDistances((prev) => ({
+                              ...prev,
+                              [item.material]: e.target.value,
+                            }))
+                          }
+                          size="small"
+                        />
+                        <div className="text-muted small mt-1">
+                          Enter known distance for this segment
+                        </div>
+                      </Col>
+                      <Col span={8}>
+                        {detailedMaterialAreas[item.material] ? (
+                          <div>
+                            <div className="text-center mb-2">
+                              <div className="text-white fw-bold bg-success px-2 py-1 rounded shadow-sm small">
+                                Total:{" "}
+                                {(
+                                  parseFloat(
+                                    detailedMaterialAreas[item.material]
+                                      .totalArea_cm2
+                                  ) / 10000
+                                ).toFixed(1)}{" "}
+                                m²
+                              </div>
+                            </div>
+                            {/* Display individual material areas */}
+                            <div className="small">
+                              {Object.entries(
+                                detailedMaterialAreas[item.material]
+                                  .materialAreas
+                              ).map(([matKey, area]) => {
+                                const materialName = matKey.replace(
+                                  "_area",
+                                  ""
+                                );
+                                return (
+                                  <div
+                                    key={matKey}
+                                    className="d-flex justify-content-between border-bottom py-1"
+                                  >
+                                    <span className="text-capitalize">
+                                      {materialName}:
+                                    </span>
+                                    <span className="fw-medium text-primary">
+                                      {(parseFloat(area) / 10000).toFixed(1)} m²
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center">
+                            <div className="text-muted bg-light px-3 py-2 rounded border">
+                              --- m²
+                            </div>
+                          </div>
+                        )}
+                      </Col>
+                      <Col span={8}>
+                        <Button
+                          type="primary"
+                          onClick={() => calculateArea(item.material)}
+                          disabled={
+                            calculating[item.material] ||
+                            !segmentDistances[item.material]
+                          }
+                          loading={calculating[item.material]}
+                          block
+                        >
+                          Calculate Area
+                        </Button>
+                      </Col>
+                    </Row>
                   </div>
                 </div>
               ))}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Layout, Steps, Button } from "antd";
 import {
   FileImageOutlined,
@@ -6,6 +7,7 @@ import {
   // AimOutlined,
   FireOutlined,
   CheckCircleOutlined,
+  EyeOutlined,
 } from "@ant-design/icons";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import HeatIslandDetector from "./HeatIslandDetector";
@@ -22,6 +24,7 @@ const { Header, Content, Footer } = Layout;
 
 const HeatScape = () => {
   const [currentStep, setCurrentStep] = useState(0);
+  const navigate = useNavigate();
 
   const [maskResult, setMaskResult] = useState(null);
   const [imageFile, setImageFile] = useState(null);
@@ -73,8 +76,27 @@ const HeatScape = () => {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Header style={{ color: "white", fontSize: "20px" }}>
-        HeatScape Control Panel
+      <Header 
+        style={{ 
+          color: "white", 
+          fontSize: "20px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}
+      >
+        <span>HeatScape Control Panel</span>
+        <Button 
+          type="primary"
+          icon={<EyeOutlined />}
+          onClick={() => navigate('/modelviewer')}
+          style={{ 
+            backgroundColor: "#1890ff",
+            borderColor: "#1890ff"
+          }}
+        >
+          Simulator View
+        </Button>
       </Header>
       <Content style={{ padding: "20px 50px 10px 50px" }}>
         <Steps current={currentStep} items={steps} />

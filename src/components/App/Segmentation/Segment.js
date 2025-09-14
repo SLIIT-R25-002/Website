@@ -1,5 +1,5 @@
 // src/components/Segment.js (or wherever you have it)
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button, Card, Input, Alert, Progress, Tag, Row, Col } from "antd";
 import {
   SearchOutlined,
@@ -68,6 +68,86 @@ const Segment = () => {
 
   // Backend API base URL - update this to your actual backend URL
   const API_BASE_URL = API_CONFIG.BASE_URL;
+
+  // State persistence key
+  const STORAGE_KEY = "segmentation_analysis_state";
+
+  // Restore state from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedState = localStorage.getItem(STORAGE_KEY);
+      if (savedState) {
+        const parsedState = JSON.parse(savedState);
+        console.log("Restoring segmentation state:", parsedState);
+
+        // Restore all the critical states
+        if (parsedState.currentStep) setCurrentStep(parsedState.currentStep);
+        if (parsedState.analysisResults)
+          setAnalysisResults(parsedState.analysisResults);
+        if (parsedState.uploadedImage)
+          setUploadedImage(parsedState.uploadedImage);
+        if (parsedState.segmentDistances)
+          setSegmentDistances(parsedState.segmentDistances);
+        if (parsedState.calculatedAreas)
+          setCalculatedAreas(parsedState.calculatedAreas);
+        if (parsedState.detailedMaterialAreas)
+          setDetailedMaterialAreas(parsedState.detailedMaterialAreas);
+        if (parsedState.visibleMasks) setVisibleMasks(parsedState.visibleMasks);
+        if (parsedState.availableImages)
+          setAvailableImages(parsedState.availableImages);
+        if (parsedState.selectedImageIndex !== undefined)
+          setSelectedImageIndex(parsedState.selectedImageIndex);
+        if (parsedState.segmentsSaved !== undefined)
+          setSegmentsSaved(parsedState.segmentsSaved);
+      }
+    } catch (error) {
+      console.error("Error restoring segmentation state:", error);
+      // Clear corrupted data
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  // Save state to localStorage whenever critical states change
+  useEffect(() => {
+    const stateToSave = {
+      currentStep,
+      analysisResults,
+      uploadedImage,
+      segmentDistances,
+      calculatedAreas,
+      detailedMaterialAreas,
+      visibleMasks,
+      availableImages,
+      selectedImageIndex,
+      segmentsSaved,
+    };
+
+    // Only save if we have meaningful data (not just initial empty state)
+    if (
+      currentStep !== "upload" ||
+      analysisResults ||
+      Object.keys(calculatedAreas).length > 0
+    ) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+        console.log("Saved segmentation state to localStorage");
+      } catch (error) {
+        console.error("Error saving segmentation state:", error);
+      }
+    }
+  }, [
+    currentStep,
+    analysisResults,
+    uploadedImage,
+    segmentDistances,
+    calculatedAreas,
+    detailedMaterialAreas,
+    visibleMasks,
+    availableImages,
+    selectedImageIndex,
+    segmentsSaved,
+  ]);
+
   // Helper function to get image blob from Firebase Storage using storage path
 
   const getImageBlobFromStorage = async (imagePath) => {
@@ -226,7 +306,43 @@ const Segment = () => {
       setTimeout(() => setCurrentStep("upload"), 3000);
     }
   };
+
+  // Function to clear stored analysis state (for starting fresh analysis)
+  const clearStoredState = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      console.log("Cleared stored segmentation state");
+    } catch (error) {
+      console.error("Error clearing stored state:", error);
+    }
+  };
+
+  // Function to reset analysis and go back to upload step
+  const resetAnalysis = () => {
+    // Clear stored state
+    clearStoredState();
+
+    // Reset all state variables to initial values
+    setCurrentStep("upload");
+    setUploadedImage(null);
+    setAnalysisResults(null);
+    setProcessingStatus("");
+    setSegmentDistances({});
+    setCalculatedAreas({});
+    setDetailedMaterialAreas({});
+    setVisibleMasks({});
+    setCalculating({});
+    setProgress(0);
+    setAvailableImages([]);
+    setSelectedImageIndex(0);
+    setSaving(false);
+    setSaveStatus("");
+    setSegmentsSaved(false);
+  };
+
   const startAnalysis = async () => {
+    // Clear previous analysis data when starting new analysis
+    clearStoredState();
     setCurrentStep("processing");
     setProcessingStatus("Loading latest image from session...");
     try {
@@ -890,21 +1006,22 @@ const Segment = () => {
   return (
     <div className="container py-4">
       {/* Header */}
-      <Card className="mb-4 d-flex align-items-center flex-wrap">
-        <div className="flex-grow-1">
-          <h3 className="mb-1">Analysis Complete</h3>
-          <p className="text-muted mb-0">
-            Interact with the results below to calculate material areas.
-          </p>
+      <Card className="mb-4">
+        <div className="d-flex align-items-center justify-content-between flex-wrap">
+          <div>
+            <h3 className="mb-1">Analysis Complete</h3>
+            <p className="text-muted mb-0">
+              Interact with the results below to calculate material areas.
+            </p>
+          </div>
+          <Button
+            type="primary"
+            onClick={resetAnalysis}
+            icon={<SyncOutlined />}
+          >
+            New Analysis
+          </Button>
         </div>
-        {/* <Button
-          type="primary"
-          onClick={resetAnalysis}
-          icon={<SyncOutlined />}
-          className="ms-auto"
-        >
-          New Analysis
-        </Button> */}
       </Card>
 
       {/* Save Section */}

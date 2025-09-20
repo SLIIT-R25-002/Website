@@ -1,26 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes as RouterRoutes, Route } from 'react-router-dom';
-// import AboutUs from './components/AboutUs';
-// import AboutUsTwo from './components/AboutUs/AboutUsTwo';
-// import Contact from './components/Contact';
+import AboutUs from './components/AboutUs';
+import AboutUsTwo from './components/AboutUs/AboutUsTwo';
+import Contact from './components/Contact';
 import Error from './components/Error';
 import Loader from './components/Helper/Loader';
 import ScrollToTop from './components/Helper/ScrollToTop';
-// import HomeDark from './components/HomeDark';
-// import HomeEight from './components/HomeEight';
-// import HomeFive from './components/HomeFive';
-// import HomeFour from './components/HomeFour';
-// import HomeOne from './components/HomeOne';
-// import HomeRtl from './components/HomeRtl';
-// import HomeSeven from './components/HomeSeven';
-// import HomeSix from './components/HomeSix';
-// import HomeThree from './components/HomeThree';
-// import Hometwo from './components/HomeTwo';
-// import News from './components/News';
-// import SingleNews from './components/News/SingleNews';
-// import Service from './components/Service';
-// import Shops from './components/Shops';
-// import ShopDetails from './components/Shops/Details';
+import HomeDark from './components/HomeDark';
+import HomeEight from './components/HomeEight';
+import HomeFive from './components/HomeFive';
+import HomeFour from './components/HomeFour';
+import HomeOne from './components/HomeOne';
+import HomeRtl from './components/HomeRtl';
+import HomeSeven from './components/HomeSeven';
+import HomeSix from './components/HomeSix';
+import HomeThree from './components/HomeThree';
+import Hometwo from './components/HomeTwo';
+import News from './components/News';
+import SingleNews from './components/News/SingleNews';
+import Service from './components/Service';
+import Shops from './components/Shops';
+import ShopDetails from './components/Shops/Details';
 import HeatScape from './components/App';
 import ModelViewer from './components/SimulationModule/ModelViewer';
 
@@ -45,7 +45,7 @@ function Routes() {
                 <Router>
                     <ScrollToTop>
                         <RouterRoutes>
-                            {/* <Route path="/" element={<HomeOne />} />
+                            <Route path="/" element={<HomeOne />} />
                             <Route path="/home-two" element={<Hometwo />} />
                             <Route path="/home-three" element={<HomeThree />} />
                             <Route path="/home-four" element={<HomeFour />} />
@@ -63,7 +63,7 @@ function Routes() {
                             <Route path="/error" element={<Error />} />
                             <Route path="/about-us-another" element={<AboutUsTwo />} />
                             <Route path="/shops" element={<Shops />} />
-                            <Route path="/shops/shop-details" element={<ShopDetails />} /> */}
+                            <Route path="/shops/shop-details" element={<ShopDetails />} />
                             <Route path="/app" element={<HeatScape />} />
                             <Route path="/modelviewer" element={<ModelViewer />} />
                             <Route path="*" element={<Error />} />

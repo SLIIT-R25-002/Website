@@ -348,7 +348,12 @@ const AutonomousNavigation = ({
 
             const responseData = await response.json();
             if (responseData.status !== 'error') {
-                message.success('Reference target sent successfully! Navigating...');
+                if(gpsData.satellites <= 3) {
+                    message.warning('Reference target sent successfully! Not enough GPS satellites for navigation.');
+                }
+                else {
+                    message.success('Reference target sent successfully! Navigating...');
+                }
                 if (imageObject.coordinates) {
                     sendCommand(`SET_TARGET:${imageObject.coordinates.lat},${imageObject.coordinates.lng}`);
                 }
@@ -574,19 +579,19 @@ const AutonomousNavigation = ({
         message.info('🎯 Starting automatic camera alignment...');
         
         // First check if target is already in view
-        const initialCheck = await checkFrameMatches();
+        // const initialCheck = await checkFrameMatches();
         
-        if (initialCheck.found) {
-            if (initialCheck.centered) {
-                setAlignmentStatus('confirmed');
-                setIsAutoAligning(false);
-                isAutoAligningRef.current = false;
-                message.success('✅ Target already centered!');
-                return;
-            } 
-            setAlignmentStatus('centering');
-            message.info('🎯 Target found, centering...');            
-        }
+        // if (initialCheck.found) {
+        //     if (initialCheck.centered) {
+        //         setAlignmentStatus('confirmed');
+        //         setIsAutoAligning(false);
+        //         isAutoAligningRef.current = false;
+        //         message.success('✅ Target already centered!');
+        //         return;
+        //     } 
+        //     setAlignmentStatus('centering');
+        //     message.info('🎯 Target found, centering...');            
+        // }
         
         // Start the alignment process with recursive checking
         const performAlignmentCheck = async () => {

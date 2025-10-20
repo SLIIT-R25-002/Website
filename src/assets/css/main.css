@@ -940,12 +940,12 @@ p {
   color: #fff;
 }
 .header-nav-box.header-nav-box-3 .appie-btn-box .main-btn {
-  background: #ff6b58;
-  border-color: #ff6b58;
+  background: #f84a6e;
+  border-color: #f84a6e;
 }
 .header-nav-box.header-nav-box-3 .appie-btn-box .main-btn:hover {
   background: transparent;
-  color: #ff6b58;
+  color: #f84a6e;
 }
 .header-nav-box.header-nav-box-3 .toggle-btn {
   color: #fff;
@@ -961,7 +961,7 @@ p {
   .appie-btn-box
   .main-btn:hover {
   background: #fff;
-  color: #2b70fa;
+  color: #fad12b;
 }
 .header-nav-box.header-nav-box-5 .appie-header-main-menu ul > li > a {
   color: #fff;
@@ -1410,7 +1410,7 @@ p {
   background-repeat: no-repeat;
 }
 .appie-hero-area.appie-hero-3-area {
-  background-image: url(../images/hero-bg.jpg);
+  background-image: url(../images/heat_home_back.png);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -1420,7 +1420,7 @@ p {
   z-index: 15;
 }
 .appie-hero-area.appie-hero-3-area .appie-hero-content .appie-title {
-  color: #fff;
+  color: #000000;
   font-size: 70px;
   line-height: 80px;
   padding: 0 80px;
@@ -1449,10 +1449,11 @@ p {
     font-size: 46px;
     line-height: 56px;
     padding: 0;
+    font-family: 'Poppins', 'Helvetica', 'Arial', sans-serif;
   }
 }
 .appie-hero-area.appie-hero-3-area .appie-hero-content p {
-  color: #fff;
+  color: #050505;
   opacity: 0.5;
   font-size: 18px;
   line-height: 28px;
@@ -1461,8 +1462,8 @@ p {
   margin-top: 35px;
 }
 .appie-hero-area.appie-hero-3-area .appie-hero-content .hero-btns .main-btn {
-  border-color: #ff6b58;
-  color: #ff6b58;
+  border-color: #f84a6e;
+  color: #f84a6e;
   background: transparent;
   margin-right: 14px;
 }

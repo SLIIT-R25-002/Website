@@ -23,6 +23,7 @@ import Shops from './components/Shops';
 import ShopDetails from './components/Shops/Details';
 import HeatScape from './components/App';
 import ModelViewer from './components/SimulationModule/ModelViewer';
+import HomeHeatScape from "./components/HomeHeatScape";
 
 function Routes() {
     const [loading, setLoading] = useState(true);
@@ -45,7 +46,8 @@ function Routes() {
                 <Router>
                     <ScrollToTop>
                         <RouterRoutes>
-                            <Route path="/" element={<HomeOne />} />
+                            <Route path="/" element={<HomeHeatScape />} />
+                            <Route path="/home-one" element={<HomeOne />} />
                             <Route path="/home-two" element={<Hometwo />} />
                             <Route path="/home-three" element={<HomeThree />} />
                             <Route path="/home-four" element={<HomeFour />} />
@@ -53,6 +55,7 @@ function Routes() {
                             <Route path="/home-six" element={<HomeSix />} />
                             <Route path="/home-seven" element={<HomeSeven />} />
                             <Route path="/home-eight" element={<HomeEight />} />
+                            <Route path="/home-heatscape" element={<HomeHeatScape />} />
                             <Route path="/home-dark" element={<HomeDark />} />
                             <Route path="/home-rtl" element={<HomeRtl />} />
                             <Route path="/news" element={<News />} />

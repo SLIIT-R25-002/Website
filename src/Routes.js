@@ -47,7 +47,7 @@ function Routes() {
                     <ScrollToTop>
                         <RouterRoutes>
                             <Route path="/" element={<HomeHeatScape />} />
-                            <Route path="/" element={<HomeOne />} />
+                            <Route path="/home-one" element={<HomeOne />} />
                             <Route path="/home-two" element={<Hometwo />} />
                             <Route path="/home-three" element={<HomeThree />} />
                             <Route path="/home-four" element={<HomeFour />} />

@@ -25,6 +25,7 @@ import {
   CompassOutlined,
   AimOutlined,
   DeleteOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import {
   collection,
@@ -35,6 +36,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import SessionsList from "./SessionsList";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -64,6 +66,7 @@ const CaptureImages = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [gyroModalVisible, setGyroModalVisible] = useState(false);
   const [gpsModalVisible, setGpsModalVisible] = useState(false);
+  const [showSessionsList, setShowSessionsList] = useState(false);
 
   const qrCodeValue = sessionId ? `heatscape://join/${sessionId}` : "";
 
@@ -135,6 +138,21 @@ const CaptureImages = () => {
     setSessionId(null);
     setImages([]);
     setErrorTxt(null);
+    setShowSessionsList(false);
+  };
+
+  const handleShowSessionsList = () => {
+    setShowSessionsList(true);
+  };
+
+  const handleBackFromSessionsList = () => {
+    setShowSessionsList(false);
+  };
+
+  const handleViewSessionFromList = (sessionIdFromList) => {
+    setSessionId(sessionIdFromList);
+    localStorage.setItem("heatscape_session_id", sessionIdFromList);
+    setShowSessionsList(false);
   };
 
   // Load session from localStorage on component mount
@@ -154,27 +172,83 @@ const CaptureImages = () => {
 
   // Listen for images in real-time when session is active
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId) return undefined;
+
+    let segmentUnsubscribers = [];
 
     const unsub = onSnapshot(
       collection(db, "sessions", sessionId, "images"),
       (snapshot) => {
+        // Clean up previous segment listeners
+        segmentUnsubscribers.forEach(unsubFn => unsubFn());
+        segmentUnsubscribers = [];
+
         const imgs = [];
-        snapshot.forEach((documment) => imgs.push({ id: documment.id, ...documment.data() }));
-        // Sort by timestamp (newest first) - handle both Firestore and JS timestamps
-        imgs.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
-        console.log(imgs);
         
-        setImages(imgs);
+        snapshot.forEach((documment) => {
+          const imageData = { id: documment.id, ...documment.data() };
+          imageData.segments = []; // Initialize empty segments array
+          imgs.push(imageData);
+
+          // Set up real-time listener for segments of this image
+          const segmentUnsub = onSnapshot(
+            collection(db, "sessions", sessionId, "images", documment.id, "segments"),
+            (segmentsSnapshot) => {
+              const segments = [];
+              segmentsSnapshot.forEach((segDoc) => {
+                segments.push({ id: segDoc.id, ...segDoc.data() });
+              });
+
+              // Update the segments for this specific image
+              setImages(prevImages => {
+                const updatedImages = prevImages.map(img => {
+                  if (img.id === documment.id) {
+                    return { ...img, segments };
+                  }
+                  return img;
+                });
+                
+                // Sort by timestamp (newest first)
+                updatedImages.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+                console.log("Images with updated segments:", updatedImages);
+                return updatedImages;
+              });
+            },
+            (segError) => {
+              console.error(`Error listening to segments for image ${documment.id}:`, segError);
+            }
+          );
+
+          segmentUnsubscribers.push(segmentUnsub);
+        });
+
+        // Initial set of images (segments will be updated by their individual listeners)
+        const sortedImages = imgs.sort((a, b) => getTimestampValue(b.timestamp) - getTimestampValue(a.timestamp));
+        console.log("Initial images:", sortedImages);
+        setImages(sortedImages);
       },
       (error) => {
         console.error("Error listening to images:", error);
         message.error("Failed to load images");
       }
     );
-    // eslint-disable-next-line consistent-return
-    return () => unsub();
+
+    // Cleanup function
+    return () => {
+      unsub();
+      segmentUnsubscribers.forEach(unsubFn => unsubFn());
+    };
   }, [sessionId]);
+
+  // Show sessions list if requested
+  if (showSessionsList) {
+    return (
+      <SessionsList
+        onBack={handleBackFromSessionsList}
+        onViewSession={handleViewSessionFromList}
+      />
+    );
+  }
 
   return (
     <Space
@@ -216,6 +290,14 @@ const CaptureImages = () => {
             >
               Create New Session
             </Button>
+
+            <Button
+              size="large"
+              onClick={handleShowSessionsList}
+              icon={<UnorderedListOutlined />}
+            >
+              View All Sessions
+            </Button>
           </Space>
         </Card>
       ) : (
@@ -253,6 +335,12 @@ const CaptureImages = () => {
                         icon={<ReloadOutlined />}
                       >
                         New Session
+                      </Button>
+                      <Button
+                        onClick={handleShowSessionsList}
+                        icon={<UnorderedListOutlined />}
+                      >
+                        All Sessions
                       </Button>
                     </Space>
                   </Space>
@@ -338,13 +426,24 @@ const CaptureImages = () => {
                 </Col>
 
                 <Col xs={24} sm={8} style={{ textAlign: "right" }}>
-                  <Button
-                    onClick={handleNewSession}
-                    icon={<ReloadOutlined />}
-                    size="small"
-                  >
-                    New Session
-                  </Button>
+                  <Space direction="vertical">
+                    <Button
+                      onClick={handleShowSessionsList}
+                      icon={<UnorderedListOutlined />}
+                      size="small"
+                      style={{ width: '100%' }}
+                    >
+                      All Sessions
+                    </Button>
+                    <Button
+                      onClick={handleNewSession}
+                      icon={<ReloadOutlined />}
+                      size="small"
+                      style={{ width: '100%' }}
+                    >
+                      New Session
+                    </Button>
+                  </Space>
                 </Col>
               </Row>
             </Card>

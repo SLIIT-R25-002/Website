@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 // import { TransformControls } from 'three-transformcontrols';
 import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import SunCalc from 'suncalc';
+import { exportUHIMultiPDF } from "../App/ReportGenerator";
 
 function ModelViewer() {
     const mountRef = useRef(null);
@@ -38,7 +39,6 @@ function ModelViewer() {
     const windVectorsRef = useRef([]);
     const originalMaterialsRef = useRef(new Map());
     const [simulationSuccess, setSimulationSuccess] = useState(false);
-    const [aiRecommendation, setAiRecommendation] = useState(null);
 
     // const defaults = {
     //     Thickness: 0.2,
@@ -53,7 +53,8 @@ function ModelViewer() {
     //     Material_type: "Concrete"
     // };
 
-    const API_KEY = '229b7c42c71d41f99ae44120252003';
+    const UhiSimuBaseUrl = process.env.REACT_APP_UHI_SIMULATION_BACKEND_URL || 'http://localhost:4200';
+    const weartherAPIKey = process.env.REACT_APP_WEATHER_API_KEY || '229b7c42c71d41f99ae44120252003';
 
     const inputGroupStyle = { display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 };
     const fileInputGroupStyle = { display: 'flex', flexDirection: 'column', gap: '4px' };
@@ -198,7 +199,7 @@ function ModelViewer() {
         const formData = new FormData();
         formData.append('file', blob, 'simulation_input.csv');
 
-        fetch('http://localhost:4200/upload-simulation-input', {
+        fetch(`${UhiSimuBaseUrl}/upload-simulation-input`, {
             method: 'POST',
             body: formData,
         })
@@ -228,49 +229,84 @@ function ModelViewer() {
     const takeSnapshot = () => {
         if (!renderer || !scene) return;
 
-        // Step 1: Temporarily remove transform control helper (gizmo)
         let helper = null;
         if (transformControlRef.current) {
             helper = transformControlRef.current.getHelper();
             scene.remove(helper);
         }
 
-        // Step 2: Capture snapshot in next frame
-        requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
             try {
-                // Get data URL (e.g., "data:image/png;base64,...")
                 const dataURL = renderer.domElement.toDataURL('image/png');
-
-                // Extract base64 string for backend
                 const base64Image = dataURL.split(',')[1];
 
-                // ✅ 1. SEND TO BACKEND
-                fetch('http://localhost:4200/get_recommendation', {
+                const res = await fetch(`${UhiSimuBaseUrl}/get_recommendation`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         image: base64Image,
                         timestamp: new Date().toISOString()
                     })
-                })
-                    .then(res => {
-                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                        return res.json();
-                    })
-                    .then(data => {
-                        console.log('✅ Recommendation response:', data);
+                });
 
-                        if (data.success && data.recommendation?.gemini_recommendation) {
-                            setAiRecommendation(data.recommendation.gemini_recommendation);
-                        }
-                    })
-                    .catch(err => {
-                        console.error('❌ Failed to send image to backend:', err);
-                    });
+                const data = await res.json();
+                console.log('✅ Recommendation response:', data);
 
-                // ✅ 2. DOWNLOAD IMAGE FOR USER
+                if (!data.success || !data.recommendation) {
+                    throw new Error('Invalid or failed response from backend');
+                }
+
+                // ✅ Destructure with aliasing for camelCase
+                const {
+                    recommendation,
+                    segments
+                } = data;
+
+                const {
+                    gemini_recommendation: geminiRecommendation,
+                    is_heat_island: isHeatIsland,
+                    metrics
+                } = recommendation;
+
+                // ✅ Validate segments before mapping
+                if (!Array.isArray(segments)) {
+                    console.error('❌ Expected segments to be an array, but got:', segments);
+                    throw new Error('Invalid segment data received');
+                }
+
+                // ✅ Prepare item for PDF
+                const item = {
+                    id: `snapshot_${Date.now()}`,
+                    source: 'manual',
+                    imageUrl: dataURL,
+                    timestamp: new Date(),
+                    segments, // ✅ Use validated segments
+                    results: {
+                        summary: {
+                            avg_temperature: metrics.avg_temperature,
+                            avg_humidity: metrics.avg_humidity,
+                            heat_retaining_percent: metrics.heat_retaining_percent,
+                            vegetation_percent: metrics.vegetation_percent,
+                            final_decision: isHeatIsland
+                                ? "Heat Island Detected"
+                                : "No Heat Island"
+                        },
+                        detailed_results: segments.map(s => ({
+                            location: s.label,
+                            material: s.material,
+                            temperature: s.temp,
+                            humidity: s.humidity,
+                            area: s.area,
+                            heat_island: isHeatIsland ? "Yes" : "No"
+                        }))
+                    },
+                    recommendation: geminiRecommendation
+                };
+
+                // ✅ Generate PDF
+                await exportUHIMultiPDF([item]);
+
+                // ✅ Download PNG
                 const link = document.createElement('a');
                 link.href = dataURL;
                 link.download = `snapshot_${new Date().toISOString().slice(0, 10)}_${Date.now()}.png`;
@@ -279,12 +315,10 @@ function ModelViewer() {
                 document.body.removeChild(link);
 
             } catch (err) {
-                console.error('❌ Snapshot capture failed:', err);
+                console.error('❌ Snapshot or report generation failed:', err);
+                setError(err.message || 'Failed to generate report');
             } finally {
-                // Re-add helper
-                if (helper) {
-                    scene.add(helper);
-                }
+                if (helper) scene.add(helper);
             }
         });
     };
@@ -318,6 +352,9 @@ function ModelViewer() {
             if (node.isMesh && node.userData.Sun_Exposure !== undefined) {
                 // ✅ Skip any object whose name starts with "Plane"
                 if (node.name && node.name.startsWith('Plane')) {
+                    return; // Skip this node
+                }
+                if (node.name && node.name.startsWith('concrete_wall_base')) {
                     return; // Skip this node
                 }
                 const { userData } = node; // ✅ Fixed: destructuring
@@ -369,7 +406,7 @@ function ModelViewer() {
         let windKmph = 10;
         try {
             const res = await fetch(
-                `http://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
+                `http://api.weatherapi.com/v1/history.json?key=${weartherAPIKey}&q=${lat},${lon}&dt=${date}`
             );
             const data = await res.json();
             const hourData = data.forecast.forecastday[0].hour.find(h =>
@@ -436,7 +473,7 @@ function ModelViewer() {
         let wHumidity = 20;
         try {
             const res = await fetch(
-                `http://api.weatherapi.com/v1/history.json?key=${API_KEY}&q=${lat},${lon}&dt=${date}`
+                `http://api.weatherapi.com/v1/history.json?key=${weartherAPIKey}&q=${lat},${lon}&dt=${date}`
             );
             const data = await res.json();
             const hourData = data.forecast.forecastday[0].hour.find(h =>
@@ -888,7 +925,7 @@ function ModelViewer() {
                     }}>
                         ✅ Thermal simulation completed! Heat Island Detected.
                         <button type="button" onClick={takeSnapshot} style={secondaryButton}>
-                            📝 Take Recommendations
+                            📝 Download Simulation Report
                         </button>
                     </div>
                 )}
@@ -1024,62 +1061,6 @@ function ModelViewer() {
                     Rotate: Click & Drag | Zoom: Scroll | Move Model: Click after upload
                 </p>
             </div>
-            {/* AI Recommendation Popup */}
-            {aiRecommendation && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    zIndex: 1000
-                }}>
-                    <div style={{
-                        background: 'white',
-                        borderRadius: '16px',
-                        width: '90%',
-                        maxWidth: '600px',
-                        maxHeight: '80vh',
-                        overflowY: 'auto',
-                        padding: '24px',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-                        position: 'relative'
-                    }}>
-                        <h3 style={{ margin: '0 0 16px', color: '#1a1a1a' }}>💡 AI Recommendation</h3>
-                        <button
-                            onClick={() => setAiRecommendation(null)}
-                            style={{
-                                position: 'absolute',
-                                top: '12px',
-                                right: '12px',
-                                background: '#f0f0f0',
-                                border: 'none',
-                                borderRadius: '50%',
-                                width: '30px',
-                                height: '30px',
-                                cursor: 'pointer',
-                                fontSize: '18px',
-                                color: '#555'
-                            }}
-                            type="button"
-                        >
-                            ×
-                        </button>
-                        <p style={{
-                            whiteSpace: 'pre-wrap',
-                            lineHeight: '1.6',
-                            color: '#333',
-                            margin: 0
-                        }}>
-                            {aiRecommendation}
-                        </p>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

@@ -23,6 +23,7 @@ import ScrollToTop from './components/Helper/ScrollToTop';
 // import ShopDetails from './components/Shops/Details';
 import HeatScape from './components/App';
 import ModelViewer from './components/SimulationModule/ModelViewer';
+import HomeHeatScape from "./components/HomeHeatScape";
 
 function Routes() {
     const [loading, setLoading] = useState(true);
@@ -53,6 +54,7 @@ function Routes() {
                             <Route path="/home-six" element={<HomeSix />} />
                             <Route path="/home-seven" element={<HomeSeven />} />
                             <Route path="/home-eight" element={<HomeEight />} />
+                            <Route path="/home-heatscape" element={<HomeHeatScape />} />
                             <Route path="/home-dark" element={<HomeDark />} />
                             <Route path="/home-rtl" element={<HomeRtl />} />
                             <Route path="/news" element={<News />} />

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "d1",
+    "kind": "Document",
+    "title": "Project Charter",
+    "file": "/docs/charter.pdf"
+  },
+  {
+    "id": "d2",
+    "kind": "Document",
+    "title": "Proposal",
+    "file": "/docs/proposal.pdf"
+  },
+  {
+    "id": "d3",
+    "kind": "Presentation",
+    "title": "PP1 Slides",
+    "file": "/docs/pp1.pdf"
+  },
+  {
+    "id": "d4",
+    "kind": "Document",
+    "title": "Research Paper",
+    "file": "/docs/research-paper.pdf"
+  },
+  {
+    "id": "d5",
+    "kind": "Document",
+    "title": "Final Report",
+    "file": "/docs/final-report.pdf"
+  }
+]

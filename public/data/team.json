@@ -1,0 +1,48 @@
+{
+  "supervisors": [
+    {
+      "name": "Mr. Vishan Jayasinghearachchi",
+      "role": "Supervisor",
+      "email": "vishan.j@sliit.lk",
+      "image": "/images/team/vishan.jpg"
+    },
+    {
+        "name": "Kaushalya Rajapakse",
+        "role": "Co-Supervisor",
+        "email": "kaushalya.r@sliit.lk",
+        "image": "/images/team/kaushalya.jpg"
+    },
+    {
+      "name": "Dr. Rajitha De Silva",
+      "role": "External Supervisor",
+      "email": "ODeSilva@lincoln.ac.uk",
+      "image": "/images/team/rajitha.jpg"
+    }
+  ],
+  "members": [
+    {
+      "name": "Ayeshmantha S. K. S.",
+      "role": "Group Leader",
+      "email": "sachinthakaa86@gmail.com",
+      "image": "/images/team/sachinthaka.jpg"
+    },
+    {
+      "name": "Member 2",
+      "role": "Group Member",
+      "email": "m2@example.com",
+      "image": "/images/team/avishka.jpg"
+    },
+    {
+      "name": "Member 3",
+      "role": "Group Member",
+      "email": "m3@example.com",
+      "image": "/images/team/sandithya.jpg"
+    },
+    {
+      "name": "Member 4",
+      "role": "Group Member",
+      "email": "m4@example.com",
+      "image": "/images/team/oshada.jpg"
+    }
+  ]
+}

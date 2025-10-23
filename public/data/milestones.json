@@ -1,0 +1,34 @@
+[
+  {
+    "id": "ms1",
+    "month": "Mar",
+    "year": 2025,
+    "title": "Proposal",
+    "blurb": "Scope and literature.",
+    "marks": "10%"
+  },
+  {
+    "id": "ms2",
+    "month": "May",
+    "year": 2025,
+    "title": "PP1",
+    "blurb": "AI pipeline v1.",
+    "marks": "10%"
+  },
+  {
+    "id": "ms3",
+    "month": "Aug",
+    "year": 2025,
+    "title": "PP2",
+    "blurb": "Digital twin & IoT.",
+    "marks": "10%"
+  },
+  {
+    "id": "ms4",
+    "month": "Oct",
+    "year": 2025,
+    "title": "Final & Viva",
+    "blurb": "Full evaluation.",
+    "marks": "70%"
+  }
+]

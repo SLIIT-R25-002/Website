@@ -1,0 +1,50 @@
+[
+  {
+    "id": "python",
+    "name": "Python",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/c/c3/Python-logo-notext.svg",
+    "color": "#3776AB"
+  },
+  {
+    "id": "tensorflow",
+    "name": "TensorFlow",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/1/11/TensorFlowLogo.svg",
+    "color": "#FF6F00"
+  },
+  {
+    "id": "keras",
+    "name": "Keras",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/e/ed/Keras_Logo.png",
+    "color": "#D84B20"
+  },
+  {
+    "id": "pandas",
+    "name": "Pandas",
+    "logo": "https://raw.githubusercontent.com/pandas-dev/pandas/main/web/pandas/static/img/pandas.svg",
+    "color": "#150458"
+  },
+  {
+    "id": "numpy",
+    "name": "NumPy",
+    "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/3/31/NumPy_logo_2020.svg/1200px-NumPy_logo_2020.svg.png",
+    "color": "#4DABF7"
+  },
+  {
+    "id": "flask",
+    "name": "Flask",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/a/a0/Flask_logo.svg",
+    "color": "#000000"
+  },
+  {
+    "id": "ethereum",
+    "name": "Ethereum",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/0/05/Ethereum_logo_2014.svg",
+    "color": "#3C3C3D"
+  },
+  {
+    "id": "solidity",
+    "name": "Solidity",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/5/50/Solidity_logo.svg",
+    "color": "#363636"
+  }
+]

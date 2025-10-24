@@ -14,6 +14,8 @@ import TeamGrid from './components/TeamGrid';
 import ContactForm from './components/ContactForm';
 import BackToTop from './components/BackToTop';
 import './App.css';
+import { Toaster } from 'react-hot-toast';
+import Technologies from './components/Technologies';
 
 function App() {
   useEffect(() => {
@@ -46,10 +48,12 @@ function App() {
           <ResearchProblem />
           <ResearchObjectives />
           <Methodology />
+          <Technologies />
           <Timeline />
           <DownloadsGrid />
           <TeamGrid />
           <ContactForm />
+          <Toaster />
         </main>
         <footer className="bg-gray-900 text-white py-8">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">

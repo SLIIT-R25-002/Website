@@ -1,34 +1,57 @@
 [
   {
     "id": "ms1",
-    "month": "Mar",
-    "year": 2025,
-    "title": "Proposal",
-    "blurb": "Scope and literature.",
-    "marks": "10%"
-  },
-  {
+    "month": "Dec",
+    "year": 2024,
+    "title": "Topic Assessment Form (TAF)",
+    "blurb": "Topic Assessment Form (TAF) submission is the initial step where the project topic and four main components are formally proposed and submitted for approval to secure topic selection.",
+    "marks": "0%"
+  },{
     "id": "ms2",
-    "month": "May",
+    "month": "Jan",
     "year": 2025,
-    "title": "PP1",
-    "blurb": "AI pipeline v1.",
-    "marks": "10%"
+    "title": "Project Proposal",
+    "blurb": "The proposal submission task was completed by submitting a comprehensive report detailing the research objectives, methodology, and expected outcomes for approval.",
+    "marks": "12%"
   },
   {
     "id": "ms3",
-    "month": "Aug",
+    "month": "Apr",
     "year": 2025,
-    "title": "PP2",
-    "blurb": "Digital twin & IoT.",
-    "marks": "10%"
+    "title": "Progress Presentation I",
+    "blurb": "Progress Presentation 1 (PP1) marks the review of approximately 50% project completion, revealing design gaps and inconsistencies, demonstrating functional features, and providing early validation of solutions.",
+    "marks": "15%"
   },
   {
     "id": "ms4",
+    "month": "Aug",
+    "year": 2025,
+    "title": "Research Paper",
+    "blurb": "Submitted research paper to ICAC 2025, contributing original findings to advance knowledge in computing, aligned with the conference theme on AI, Quantum, and future technologies.",
+    "marks": "10%"
+  },
+  {
+    "id": "ms5",
+    "month": "Sep",
+    "year": 2025,
+    "title": "Progress Presentation 2",
+    "blurb": "Progress Presentation 2 (PP2) demonstrates 90% project completion, showcasing near-final system functionality and readiness for final evaluation.",
+    "marks": "18%"
+  },
+  {
+    "id": "ms6",
     "month": "Oct",
     "year": 2025,
-    "title": "Final & Viva",
-    "blurb": "Full evaluation.",
-    "marks": "70%"
+    "title": "Research logbook",
+    "blurb": "The research logbook records daily progress and key activities of the project, including Status Documents 1 & 2, serving as a validated record of the project’s status and ensuring continuous tracking and transparency.",
+    "marks": "4%"
+  },
+  {
+    "id": "ms7",
+    "month": "Oct",
+    "year": 2025,
+    "title": "Final Presentation and Viva evaluations",
+    "blurb": "The Final Presentation & Viva is an individual oral exam where each member defends their contribution, demonstrating understanding and involvement in the project, and answering questions to confirm their role and knowledge.",
+    "marks": "20%"
   }
 ]

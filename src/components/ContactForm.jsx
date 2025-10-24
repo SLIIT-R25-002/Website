@@ -1,33 +1,73 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import axios from 'axios';
+import { toast } from 'react-hot-toast';
 import Section from './Section';
 
 const ContactForm = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+  const [email, setEmail] = useState({
+    alias: '',
+    subject: 'Via HeatScape Web',
     message: '',
+    replyTo: '',
+    to: 'info.heatscape@gmail.com',
+    text: '',
+    html: '',
   });
-  const [showToast, setShowToast] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    
-    // Show success toast
-    setShowToast(true);
-    
-    // Reset form
-    setFormData({ name: '', email: '', message: '' });
-    
-    // Hide toast after 3 seconds
-    setTimeout(() => setShowToast(false), 3000);
-  };
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    setEmail((prev) => ({
+      ...prev,
+      [name]: value,
+      // Keep `text` in sync with the message for plain-text fallback
+      ...(name === 'message' && { text: value }),
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!email.alias) {
+      toast.error('Please enter your name', { position: 'bottom-center' });
+      return;
+    }
+    if (!email.replyTo) {
+      toast.error('Please enter your email', { position: 'bottom-center' });
+      return;
+    }
+    if (!email.text && !email.html) {
+      toast.error('Please enter a message', { position: 'bottom-center' });
+      return;
+    }
+
+    try {
+      await toast.promise(
+        axios.post('https://email.pixelcore.lk/api/send-email', email),
+        {
+          loading: 'Sending...',
+          success: <b>Email sent successfully!</b>,
+          error: <b>Failed to send email. Please try again.</b>,
+        },
+        {
+          position: 'bottom-center',
+        }
+      );
+
+      // Reset form
+      setEmail({
+        alias: '',
+        subject: 'Via HeatScape Web',
+        message: '',
+        replyTo: '',
+        to: 'info.heatscape@gmail.com',
+        text: '',
+        html: '',
+      });
+    } catch (error) {
+      // Error is already handled by react-hot-toast via toast.promise
+      console.error('Email sending error:', error);
+    }
   };
 
   return (
@@ -50,7 +90,7 @@ const ContactForm = () => {
           <h3 className="text-2xl font-semibold text-gray-900 mb-6">
             Contact Information
           </h3>
-          
+
           <div className="space-y-4">
             <div className="flex items-start">
               <svg className="w-6 h-6 text-primary-600 mr-3 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -60,7 +100,8 @@ const ContactForm = () => {
               <div>
                 <h4 className="font-medium text-gray-900 mb-1">Address</h4>
                 <p className="text-gray-600">
-                  Sri Lanka Institute of Information Technology (SLIIT)<br />
+                  Sri Lanka Institute of Information Technology (SLIIT)
+                  <br />
                   Malabe, Sri Lanka
                 </p>
               </div>
@@ -89,14 +130,14 @@ const ContactForm = () => {
         >
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="alias" className="block text-sm font-medium text-gray-700 mb-1">
                 Name
               </label>
               <input
                 type="text"
-                id="name"
-                name="name"
-                value={formData.name}
+                id="alias"
+                name="alias"
+                value={email.alias}
                 onChange={handleChange}
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all"
@@ -104,14 +145,14 @@ const ContactForm = () => {
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="replyTo" className="block text-sm font-medium text-gray-700 mb-1">
                 Email
               </label>
               <input
                 type="email"
-                id="email"
-                name="email"
-                value={formData.email}
+                id="replyTo"
+                name="replyTo"
+                value={email.replyTo}
                 onChange={handleChange}
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-600 focus:border-transparent transition-all"
@@ -125,7 +166,7 @@ const ContactForm = () => {
               <textarea
                 id="message"
                 name="message"
-                value={formData.message}
+                value={email.message}
                 onChange={handleChange}
                 required
                 rows="4"
@@ -144,23 +185,6 @@ const ContactForm = () => {
           </form>
         </motion.div>
       </div>
-
-      {/* Success Toast */}
-      {showToast && (
-        <motion.div
-          className="fixed bottom-8 right-8 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg"
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 50 }}
-        >
-          <div className="flex items-center">
-            <svg className="w-6 h-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            Message sent successfully!
-          </div>
-        </motion.div>
-      )}
     </Section>
   );
 };

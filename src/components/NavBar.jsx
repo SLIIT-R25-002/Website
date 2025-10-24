@@ -170,25 +170,24 @@ const NavBar = () => {
       </div>
 
       {/* Mobile menu */}
-      <div 
-        id="mobile-menu" 
-        className={`hidden md:hidden border-t transition-all duration-500 ${
-          isScrolled ? 'bg-white' : 'bg-gray-900/95 backdrop-blur-md'
-        }`}
-      >
-        <div className="px-2 pt-2 pb-3 space-y-1">
-          {navItems.map((item) => (
-            item.dropdown ? (
-<></>
-            ) : (
+    <div 
+      id="mobile-menu" 
+      className={`hidden md:hidden border-t transition-all duration-500 ${
+        isScrolled ? 'bg-white' : 'bg-gray-900/95 backdrop-blur-md'
+      }`}
+    >
+      <div className="px-2 pt-2 pb-3 space-y-1">
+        {navItems.map((item) => (
+          item.dropdown ? (
+            <div key={item.id} className="space-y-1">
+              {/* Dropdown Toggle Button */}
               <button
-                key={item.id}
                 onClick={() => {
-                  scrollToSection(item.id);
-                  document.getElementById('mobile-menu').classList.add('hidden');
+                  const dropdown = document.getElementById(`mobile-dropdown-${item.id}`);
+                  dropdown.classList.toggle('hidden');
                 }}
-                className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-all duration-300 ${
-                  activeSection === item.id
+                className={`flex items-center justify-between w-full px-3 py-2 rounded-md text-base font-medium transition-all duration-300 ${
+                  activeSection && item.dropdown.some(d => d.id === activeSection)
                     ? isScrolled
                       ? 'text-primary-600 bg-primary-50'
                       : 'text-white bg-white/20'
@@ -198,10 +197,56 @@ const NavBar = () => {
                 }`}
               >
                 {item.label}
-              </button>
-            )
-          ))}
-        </div>
+                <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                </button>
+
+              {/* Dropdown Items */}
+              <div
+                id={`mobile-dropdown-${item.id}`}
+                className="hidden bg-white rounded-md shadow-lg overflow-hidden"
+              >
+                {item.dropdown.map((sub) => (
+                  <button
+                    key={sub.id}
+                    onClick={() => {
+                      scrollToSection(sub.id);
+                      document.getElementById('mobile-menu').classList.add('hidden');
+                    }}
+                    className={`block w-full text-left px-4 py-2 text-sm font-medium transition-colors duration-150 ${
+                      activeSection === sub.id
+                        ? 'text-primary-600 bg-primary-50'
+                        : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {sub.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <button
+              key={item.id}
+              onClick={() => {
+                scrollToSection(item.id);
+                document.getElementById('mobile-menu').classList.add('hidden');
+              }}
+              className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-all duration-300 ${
+                activeSection === item.id
+                  ? isScrolled
+                    ? 'text-primary-600 bg-primary-50'
+                    : 'text-white bg-white/20'
+                  : isScrolled
+                    ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                    : 'text-white/90 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              {item.label}
+            </button>
+          )
+        ))}
+      </div>
       </div>
     </motion.nav>
   );

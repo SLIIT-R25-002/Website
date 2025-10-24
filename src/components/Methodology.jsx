@@ -8,23 +8,23 @@ const Methodology = () => {
   const steps = [
     {
       id: 'M1',
-      title: 'Image',
-      blurb: 'Segment surfaces (asphalt, roofs, concrete, vegetation) from street photos; add context via VLM.',
+      title: 'Real-Time Urban Scene Object Detection and Segmentation Integration',
+      blurb: 'This component captures urban images using a custom mobile app and applies advanced deep learning models YOLOv8 and MobileSAM for real-time object detection and high-precision pixel-level segmentation. It classifies urban materials by combining CLIP model image-text similarity with heuristic features, enabling detailed mapping of heat-retaining surfaces.',
     },
     {
       id: 'M2',
-      title: 'IoT',
-      blurb: 'Collect thermal + ambient + GPS/IMU data along routes; align with tiles.',
+      title: 'Mobile IoT-Based Autonomous Urban Thermal Sensing Platform',
+      blurb: 'This component developed a mobile IoT platform equipped with GPS, gyroscopes, and thermal sensors for autonomous navigation and precise object thermal measurement. Using visual feature matching (SuperGlue) and real-time data transmission, it reliably maps surface temperatures to segmented urban features, providing ground-truth validation for Urban Heat Island analyses.',
     },
     {
       id: 'M3',
-      title: 'Explainability',
-      blurb: 'Explain risk with surface mix & exposure; emit short rationales.',
+      title: 'Urban Heat Island Detection and Mitigation Using Vision-Language Models',
+      blurb: 'This methodology integrates logistic regression with advanced Vision-Language Models (Gemini) to detect Urban Heat Islands (UHIs) using segmented imagery and environmental metadata. The system predicts UHI presence and generates low-cost, context-aware mitigation strategies, enhancing urban climate resilience with explainable AI for transparent decision support.',
     },
     {
       id: 'M4',
-      title: 'Digital Twin',
-      blurb: 'Adjust cool roofs, shade, canopy; preview indicative ΔT.',
+      title: 'GIS-Integrated Digital Twin Simulation Tool for Urban Heat Island Prediction',
+      blurb: 'This Component created an integrated simulation tool combining GIS data, 3D digital twin models enriched with thermal metadata, real-time weather inputs, and MATLAB Simscape Thermal simulations. It predicts UHI effects at building and neighborhood scales, offering interactive visualization and decision-support for sustainable urban planning and effective heat mitigation.',
     },
   ];
 

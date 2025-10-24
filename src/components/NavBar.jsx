@@ -4,14 +4,22 @@ import { motion } from 'framer-motion';
 const NavBar = () => {
   const [activeSection, setActiveSection] = useState('home');
   const [isScrolled, setIsScrolled] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const navItems = [
     { id: 'home', label: 'Home' },
     { id: 'overview', label: 'Overview' },
-    { id: 'literature', label: 'Literature' },
-    { id: 'research-gap', label: 'Research Gap' },
-    { id: 'research-problem', label: 'Research Problem' },
-    { id: 'methodology', label: 'Methodology' },
+    {
+      id: 'project-scope',
+      label: 'Project Scope',
+      dropdown: [
+        { id: 'literature', label: 'Literature' },
+        { id: 'research-gap', label: 'Research Gap' },
+        { id: 'research-problem', label: 'Research Problem' },
+        { id: 'research-objectives', label: 'Research Objectives' },
+        { id: 'methodology', label: 'Methodology' },
+      ]
+    },
     { id: 'milestones', label: 'Milestones' },
     { id: 'downloads', label: 'Downloads' },
     { id: 'team', label: 'Team' },
@@ -81,21 +89,64 @@ const NavBar = () => {
           
           <div className="hidden md:flex space-x-1">
             {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => scrollToSection(item.id)}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-500 ${
-                  activeSection === item.id
-                    ? isScrolled 
-                      ? 'text-primary-600 bg-primary-50' 
-                      : 'text-white bg-white/20 backdrop-blur-sm'
-                    : isScrolled
-                      ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
-                      : 'text-white/90 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                {item.label}
-              </button>
+              item.dropdown ? (
+                <div
+                  key={item.id}
+                  className="relative"
+                  onMouseEnter={() => setDropdownOpen(true)}
+                  onMouseLeave={() => setDropdownOpen(false)}
+                >
+                  <button
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-500 flex items-center ${
+                      activeSection && item.dropdown.some(d => d.id === activeSection)
+                        ? isScrolled
+                          ? 'text-primary-600 bg-primary-50'
+                          : 'text-white bg-white/20 backdrop-blur-sm'
+                        : isScrolled
+                          ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                          : 'text-white/90 hover:text-white hover:bg-white/10'
+                    }`}
+                    tabIndex={0}
+                  >
+                    {item.label}
+                    <svg className="ml-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  <div className={`absolute left-0 mt-0 w-56 h-2`} />
+                  <div className={`absolute left-0 mt-2 w-56 bg-white rounded-md shadow-lg z-50 transition-all duration-300 ${dropdownOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                    <div className="py-2">
+                      {item.dropdown.map((sub) => (
+                        <button
+                          key={sub.id}
+                          onClick={() => { setDropdownOpen(false); scrollToSection(sub.id); }}
+                          className={`block w-full text-left px-4 py-2 text-sm font-medium transition-colors duration-150 ${
+                            activeSection === sub.id
+                              ? 'text-primary-600 bg-primary-50'
+                              : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  key={item.id}
+                  onClick={() => scrollToSection(item.id)}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-500 ${
+                    activeSection === item.id
+                      ? isScrolled 
+                        ? 'text-primary-600 bg-primary-50' 
+                        : 'text-white bg-white/20 backdrop-blur-sm'
+                      : isScrolled
+                        ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                        : 'text-white/90 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              )
             ))}
           </div>
 
@@ -127,24 +178,28 @@ const NavBar = () => {
       >
         <div className="px-2 pt-2 pb-3 space-y-1">
           {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                scrollToSection(item.id);
-                document.getElementById('mobile-menu').classList.add('hidden');
-              }}
-              className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-all duration-300 ${
-                activeSection === item.id
-                  ? isScrolled
-                    ? 'text-primary-600 bg-primary-50'
-                    : 'text-white bg-white/20'
-                  : isScrolled
-                    ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
-                    : 'text-white/90 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              {item.label}
-            </button>
+            item.dropdown ? (
+<></>
+            ) : (
+              <button
+                key={item.id}
+                onClick={() => {
+                  scrollToSection(item.id);
+                  document.getElementById('mobile-menu').classList.add('hidden');
+                }}
+                className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-all duration-300 ${
+                  activeSection === item.id
+                    ? isScrolled
+                      ? 'text-primary-600 bg-primary-50'
+                      : 'text-white bg-white/20'
+                    : isScrolled
+                      ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                      : 'text-white/90 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {item.label}
+              </button>
+            )
           ))}
         </div>
       </div>

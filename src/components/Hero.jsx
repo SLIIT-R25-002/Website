@@ -34,12 +34,13 @@ const Hero = () => {
           transition={{ duration: 0.6, ease: 'easeOut' }}
         >
           <motion.h1
-            className="text-5xl md:text-7xl font-bold text-white mb-4 drop-shadow-2xl"
+            className="text-5xl md:text-7xl font-bold mb-4 drop-shadow-2xl"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
           >
-            HeatScape
+            <span className="text-white">Heat</span>
+            <span className="text-primary-600">Scape</span>
           </motion.h1>
           
           <motion.p
@@ -48,7 +49,7 @@ const Hero = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
-            AI + IoT + Digital Twins for Urban Heat Island analysis
+            Seeing the heat, shaping the solution
           </motion.p>
           
           <motion.p

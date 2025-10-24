@@ -50,20 +50,30 @@ const NavBar = () => {
 
   return (
     <motion.nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${
-        isScrolled ? 'bg-white shadow-md' : 'bg-white/95 backdrop-blur-sm'
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-in-out ${
+        isScrolled ? 'bg-white shadow-lg' : 'bg-transparent'
       }`}
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-20">
           <button
             onClick={() => scrollToSection('home')}
-            className="text-xl font-bold text-gray-900 hover:text-primary-600 transition-colors"
+            className="transition-colors duration-500 group flex flex-col items-start -my-1"
           >
-            HeatScape
+            <div className="text-3xl font-bold leading-none mb-0.5">
+              <span className={`transition-colors duration-500 ${isScrolled ? 'text-gray-900 group-hover:text-gray-700' : 'text-white group-hover:text-gray-100'}`}>
+                HEAT
+              </span>
+              <span className={`transition-colors duration-500 ${isScrolled ? 'text-primary-600 group-hover:text-primary-700' : 'text-primary-500 group-hover:text-primary-400'}`}>
+                SCAPE
+              </span>
+            </div>
+            <div className={`text-[0.6rem] font-medium tracking-widest uppercase transition-colors duration-500 ${isScrolled ? 'text-gray-600 group-hover:text-gray-800' : 'text-white/80 group-hover:text-white'}`}>
+              Urban Heat Intelligence System
+            </div>
           </button>
           
           <div className="hidden md:flex space-x-1">
@@ -71,10 +81,14 @@ const NavBar = () => {
               <button
                 key={item.id}
                 onClick={() => scrollToSection(item.id)}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-150 ${
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-500 ${
                   activeSection === item.id
-                    ? 'text-primary-600 bg-primary-50'
-                    : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                    ? isScrolled 
+                      ? 'text-primary-600 bg-primary-50' 
+                      : 'text-white bg-white/20 backdrop-blur-sm'
+                    : isScrolled
+                      ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                      : 'text-white/90 hover:text-white hover:bg-white/10'
                 }`}
               >
                 {item.label}
@@ -89,7 +103,9 @@ const NavBar = () => {
                 const mobileMenu = document.getElementById('mobile-menu');
                 mobileMenu.classList.toggle('hidden');
               }}
-              className="text-gray-700 hover:text-primary-600"
+              className={`transition-colors duration-500 ${
+                isScrolled ? 'text-gray-700 hover:text-primary-600' : 'text-white hover:text-primary-300'
+              }`}
             >
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -100,7 +116,12 @@ const NavBar = () => {
       </div>
 
       {/* Mobile menu */}
-      <div id="mobile-menu" className="hidden md:hidden bg-white border-t">
+      <div 
+        id="mobile-menu" 
+        className={`hidden md:hidden border-t transition-all duration-500 ${
+          isScrolled ? 'bg-white' : 'bg-gray-900/95 backdrop-blur-md'
+        }`}
+      >
         <div className="px-2 pt-2 pb-3 space-y-1">
           {navItems.map((item) => (
             <button
@@ -109,10 +130,14 @@ const NavBar = () => {
                 scrollToSection(item.id);
                 document.getElementById('mobile-menu').classList.add('hidden');
               }}
-              className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
+              className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium transition-all duration-300 ${
                 activeSection === item.id
-                  ? 'text-primary-600 bg-primary-50'
-                  : 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                  ? isScrolled
+                    ? 'text-primary-600 bg-primary-50'
+                    : 'text-white bg-white/20'
+                  : isScrolled
+                    ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'
+                    : 'text-white/90 hover:text-white hover:bg-white/10'
               }`}
             >
               {item.label}

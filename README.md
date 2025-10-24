@@ -1,6 +1,6 @@
 # HeatScape
 
-AI + IoT + Digital Twins for Urban Heat Island analysis
+Seeing the heat, shaping the solution
 
 ## Overview
 

@@ -26,7 +26,7 @@ function App() {
   return (
     <HelmetProvider>
       <Helmet>
-        <title>HeatScape - AI + IoT + Digital Twins for Urban Heat Island Analysis</title>
+        <title>HeatScape - Seeing the heat, shaping the solution</title>
         <meta name="description" content="HeatScape combines AI vision, mobile IoT sensing, and a lightweight digital twin to detect heat-driving surfaces and test mitigation strategies at street level." />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="theme-color" content="#e03a28" />
@@ -46,7 +46,7 @@ function App() {
         <footer className="bg-gray-900 text-white py-8">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <p className="text-gray-400">
-              © 2025 HeatScape. All rights reserved.
+              © 2025 <span className="text-gray-300">Heat</span><span className="text-primary-600">Scape</span>. All rights reserved.
             </p>
             <p className="text-gray-500 text-sm mt-2">
               Sri Lanka Institute of Information Technology (SLIIT)

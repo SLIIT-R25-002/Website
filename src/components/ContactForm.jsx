@@ -72,8 +72,8 @@ const ContactForm = () => {
               </svg>
               <div>
                 <h4 className="font-medium text-gray-900 mb-1">Email</h4>
-                <a href="mailto:heatscape@sliit.lk" className="text-primary-600 hover:text-primary-700">
-                  heatscape@sliit.lk
+                <a href="mailto:info.heatscape@gmail.com" className="text-primary-600 hover:text-primary-700">
+                  info.heatscape@gmail.com
                 </a>
               </div>
             </div>

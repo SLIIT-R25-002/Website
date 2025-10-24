@@ -151,4 +151,4 @@ The site is optimized for:
 
 Sri Lanka Institute of Information Technology (SLIIT)  
 Malabe, Sri Lanka  
-Email: heatscape@sliit.lk
+Email: info.heatscape@gmail.com

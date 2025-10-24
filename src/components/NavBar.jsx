@@ -9,6 +9,8 @@ const NavBar = () => {
     { id: 'home', label: 'Home' },
     { id: 'overview', label: 'Overview' },
     { id: 'literature', label: 'Literature' },
+    { id: 'research-gap', label: 'Research Gap' },
+    { id: 'research-problem', label: 'Research Problem' },
     { id: 'methodology', label: 'Methodology' },
     { id: 'milestones', label: 'Milestones' },
     { id: 'downloads', label: 'Downloads' },

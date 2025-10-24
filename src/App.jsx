@@ -4,6 +4,8 @@ import NavBar from './components/NavBar';
 import Hero from './components/Hero';
 import Overview from './components/Overview';
 import LiteratureSurvey from './components/LiteratureSurvey';
+import ResearchGap from './components/ResearchGap';
+import ResearchProblem from './components/ResearchProblem';
 import Methodology from './components/Methodology';
 import Timeline from './components/Timeline';
 import DownloadsGrid from './components/DownloadsGrid';
@@ -39,6 +41,8 @@ function App() {
           <Hero />
           <Overview />
           <LiteratureSurvey />
+          <ResearchGap />
+          <ResearchProblem />
           <Methodology />
           <Timeline />
           <DownloadsGrid />

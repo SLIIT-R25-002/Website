@@ -18,6 +18,7 @@ const NavBar = () => {
         { id: 'research-problem', label: 'Research Problem' },
         { id: 'research-objectives', label: 'Research Objectives' },
         { id: 'methodology', label: 'Methodology' },
+        { id: 'tools-and-technologies', label: 'Tools and Technologies' },
       ]
     },
     { id: 'milestones', label: 'Milestones' },
@@ -31,13 +32,28 @@ const NavBar = () => {
       setIsScrolled(window.scrollY > 20);
 
       // Determine active section
-      const sections = navItems.map(item => document.getElementById(item.id));
+      const sections = navItems.flatMap(item => {
+          if(item.dropdown?.length > 0){
+            return item.dropdown?.map(d => document.getElementById(d.id)) || [];
+          }
+
+          return [document.getElementById(item.id)];
+      });
+
+      const flatNavItems = navItems.flatMap(item => {
+          if(item.dropdown?.length > 0){
+            return item.dropdown?.map(d => (d)) || [];
+          }
+
+          return [item];
+      });
+    
       const scrollPosition = window.scrollY + 100;
 
       for (let i = sections.length - 1; i >= 0; i--) {
         const section = sections[i];
         if (section && section.offsetTop <= scrollPosition) {
-          setActiveSection(navItems[i].id);
+          setActiveSection(flatNavItems[i].id);
           break;
         }
       }
@@ -99,8 +115,8 @@ const NavBar = () => {
                   <button
                     className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-500 flex items-center ${
                       activeSection && item.dropdown.some(d => d.id === activeSection)
-                        ? isScrolled
-                          ? 'text-primary-600 bg-primary-50'
+                        ? isScrolled 
+                          ? 'text-primary-600 bg-primary-50' 
                           : 'text-white bg-white/20 backdrop-blur-sm'
                         : isScrolled
                           ? 'text-gray-700 hover:text-primary-600 hover:bg-gray-50'

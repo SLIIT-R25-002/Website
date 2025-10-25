@@ -13,7 +13,7 @@ const Technologies = () => {
   }, []);
 
   return (
-    <Section id="technologies" className="bg-gradient-to-b from-gray-50 to-white relative overflow-hidden">
+    <Section id="tools-and-technologies" className="bg-gradient-to-b from-gray-50 to-white relative overflow-hidden">
       {/* Background decoration */}
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500 rounded-full blur-3xl"></div>

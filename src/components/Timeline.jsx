@@ -21,7 +21,7 @@ const Timeline = () => {
         </p>
       </div>
 
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <div className="relative">
           {/* Timeline line */}
           <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 h-full w-0.5 bg-primary-200" />
@@ -38,7 +38,7 @@ const Timeline = () => {
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
               {/* Date */}
-              <div className={`md:w-5/12 ${index % 2 === 0 ? 'md:text-right md:pr-8' : 'md:pl-8'}`}>
+              <div className={`md:w-5/12 ${index % 2 === 0 ? 'md:text-right md:pr-12' : 'md:pl-12'}`}>
                 <div className="text-primary-600 font-bold text-lg">
                   {milestone.month} {milestone.year}
                 </div>

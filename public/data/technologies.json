@@ -94,5 +94,23 @@
     "name": "Jupyter Notebook",
     "logo": "https://upload.wikimedia.org/wikipedia/commons/3/38/Jupyter_logo.svg",
     "color": "#F37626"
+  },
+  {
+    "id": "colab",
+    "name": "Google Colab",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/d/d0/Google_Colaboratory_SVG_Logo.svg",
+    "color": "#F9AB00"
+  },
+  {
+  "id": "gemini",
+  "name": "Gemini (Google AI)",
+  "logo": "/images/Google-Gemini-Logo-Vector.jpg",
+  "color": "#4285F4"
+  },
+  {
+    "id": "scikitlearn",
+    "name": "Scikit-Learn",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/0/05/Scikit_learn_logo_small.svg",
+    "color": "#F89939"
   }
 ]

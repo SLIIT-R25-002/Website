@@ -14,25 +14,25 @@
   {
     "id": "keras",
     "name": "Keras",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/e/ed/Keras_Logo.png",
+    "logo": "https://keras.io/img/logo.png",
     "color": "#D84B20"
   },
   {
     "id": "pandas",
     "name": "Pandas",
-    "logo": "https://raw.githubusercontent.com/pandas-dev/pandas/main/web/pandas/static/img/pandas.svg",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/e/ed/Pandas_logo.svg",
     "color": "#150458"
   },
   {
     "id": "numpy",
     "name": "NumPy",
-    "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/3/31/NumPy_logo_2020.svg/1200px-NumPy_logo_2020.svg.png",
+    "logo": "https://numpy.org/images/logo.svg",
     "color": "#4DABF7"
   },
   {
     "id": "flask",
     "name": "Flask",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/a/a0/Flask_logo.svg",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/3/3c/Flask_logo.svg",
     "color": "#000000"
   },
   {
@@ -42,9 +42,57 @@
     "color": "#3C3C3D"
   },
   {
-    "id": "solidity",
-    "name": "Solidity",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/5/50/Solidity_logo.svg",
-    "color": "#363636"
+    "id": "arduino",
+    "name": "Arduino",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/8/87/Arduino_Logo.svg",
+    "color": "#00979D"
+  },
+  {
+    "id": "esp32",
+    "name": "ESP32",
+    "logo": "https://www.espressif.com/sites/all/themes/espressif/logo-black.svg",
+    "color": "#E7352C"
+  },
+  {
+    "id": "firebase",
+    "name": "Firebase",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/3/37/Firebase_Logo.svg",
+    "color": "#FFCA28"
+  },
+  {
+    "id": "opencv",
+    "name": "OpenCV",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/3/32/OpenCV_Logo_with_text_svg_version.svg",
+    "color": "#5C3EE8"
+  },
+  {
+    "id": "matplotlib",
+    "name": "Matplotlib",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/8/84/Matplotlib_icon.svg",
+    "color": "#11557C"
+  },
+  {
+    "id": "websocket",
+    "name": "WebSocket",
+    "logo": "https://www.vectorlogo.zone/logos/socketio/socketio-icon.svg",
+    "color": "#3C8CDE"
+  },
+  {
+    "id": "pytorch",
+    "name": "PyTorch",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/1/10/PyTorch_logo_icon.svg",
+    "color": "#EE4C2C"
+  },
+  {
+    "id": "git",
+    "name": "Git",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/e/e0/Git-logo.svg",
+    "color": "#F05032"
+  },
+  {
+    "id": "jupyter",
+    "name": "Jupyter Notebook",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/3/38/Jupyter_logo.svg",
+    "color": "#F37626"
   }
 ]

@@ -32,7 +32,7 @@ function App() {
   return (
     <HelmetProvider>
       <Helmet>
-        <title>HeatScape - Seeing the heat, shaping the solution</title>
+        <title>HeatScape - Mapping the heat, shaping the solution</title>
         <meta name="description" content="HeatScape combines AI vision, mobile IoT sensing, and a lightweight digital twin to detect heat-driving surfaces and test mitigation strategies at street level." />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="theme-color" content="#e03a28" />

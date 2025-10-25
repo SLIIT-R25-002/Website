@@ -2,31 +2,115 @@
   {
     "id": "d1",
     "kind": "Document",
-    "title": "Project Charter",
-    "file": "/docs/charter.pdf"
+    "title": "Topic Assessment",
+    "file": "/docs/TAF_R25-002.pdf"
   },
   {
     "id": "d2",
     "kind": "Document",
-    "title": "Proposal",
-    "file": "/docs/proposal.pdf"
+    "title": "Proposal | Ayeshmantha",
+    "file": "/docs/Project_Proposal_IT21219320.pdf"
   },
   {
     "id": "d3",
-    "kind": "Presentation",
-    "title": "PP1 Slides",
-    "file": "/docs/pp1.pdf"
+    "kind": "Document",
+    "title": "Proposal | Kumara",
+    "file": "/docs/proposal.pdf"
   },
   {
     "id": "d4",
     "kind": "Document",
-    "title": "Research Paper",
-    "file": "/docs/research-paper.pdf"
+    "title": "Proposal | Silva",
+    "file": "/docs/proposal.pdf"
   },
   {
     "id": "d5",
     "kind": "Document",
-    "title": "Final Report",
-    "file": "/docs/final-report.pdf"
+    "title": "Proposal | Madhuwantha",
+    "file": "/docs/proposal.pdf"
+  },
+  {
+    "id": "d6",
+    "kind": "Presentation",
+    "title": "Proposal Presentation",
+    "file": "/docs/ProposalPresentation.pptx"
+  },
+  {
+    "id": "d7",
+    "kind": "Presentation",
+    "title": "Progress Presentation 1",
+    "file": "/docs/R25-002-Progress Presentation - 1.pptx"
+  },
+  {
+    "id": "d8",
+    "kind": "Link",
+    "title": "Checklist 1 | Git Link",
+    "file": "https://github.com/SLIIT-R25-002/HeatScape"
+  },
+  {
+    "id": "d9",
+    "kind": "Presentation",
+    "title": "Progress Presentation 2",
+    "file": "/docs/R25-002-Progress Presentation - 2.pptx"
+  },
+  {
+    "id": "d10",
+    "kind": "Video",
+    "title": "Checklist 2 | UI/UX Demo",
+    "file": "https://github.com/SLIIT-R25-002/HeatScape"
+  },
+  {
+    "id": "d11",
+    "kind": "Video",
+    "title": "Checklist 2 | IoT Demo",
+    "file": "/docs/IOT_demo.mp4"
+  },
+  {
+    "id": "d12",
+    "kind": "Document",
+    "title": "Checklist 2 | Deployment Report",
+    "file": "/docs/deployment.pdf"
+  },
+  {
+    "id": "d13",
+    "kind": "Document",
+    "title": "Research Paper",
+    "file": "/docs/R25-002_Research_Paper.pdf"
+  },
+  {
+    "id": "d14",
+    "kind": "Document",
+    "title": "Final Report | Group",
+    "file": "/docs/R25-002_Final_Report.pdf"
+  },
+  {
+    "id": "d15",
+    "kind": "Document",
+    "title": "Final Report | Ayeshmantha",
+    "file": "/docs/R25-002_Individual_Summary_Report_Ayeshmantha.pdf"
+  },
+  {
+    "id": "d16",
+    "kind": "Document",
+    "title": "Final Report | Kumara",
+    "file": "/docs/deployment.pdf"
+  },
+  {
+    "id": "d17",
+    "kind": "Document",
+    "title": "Final Report | Silva",
+    "file": "/docs/deployment.pdf"
+  },
+  {
+    "id": "d18",
+    "kind": "Document",
+    "title": "Final Report | Madhuwantha",
+    "file": "/docs/deployment.pdf"
+  },
+  {
+    "id": "d19",
+    "kind": "Document",
+    "title": "Log Book",
+    "file": "/docs/logbook.pdf"
   }
 ]

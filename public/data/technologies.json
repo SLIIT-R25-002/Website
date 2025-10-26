@@ -112,5 +112,53 @@
     "name": "Scikit-Learn",
     "logo": "https://upload.wikimedia.org/wikipedia/commons/0/05/Scikit_learn_logo_small.svg",
     "color": "#F89939"
+  },
+  {
+    "id": "nodejs",
+    "name": "NodeJS",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/d/d9/Node.js_logo.svg",
+    "color": "#F89939"
+  },
+  {
+    "id": "weatherapi",
+    "name": "WeatherAPI",
+    "logo": "/images/logos/weatherapi.png",
+    "color": "#F89939"
+  },
+  {
+    "id": "matweb",
+    "name": "MatWeb",
+    "logo": "/images/logos/MatWeb.png",
+    "color": "#F89939"
+  },
+  {
+    "id": "blender",
+    "name": "Blender",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/3/3c/Logo_Blender.svg",
+    "color": "#F89939"
+  },
+  {
+    "id": "sketchfab",
+    "name": "SketchFab",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/2/25/Sketchfab_logo.svg",
+    "color": "#F89939"
+  },
+  {
+    "id": "maptiles",
+    "name": "MapTiles",
+    "logo": "/images/logos/Maptiles.png",
+    "color": "#F89939"
+  },
+  {
+    "id": "suncalc",
+    "name": "SunCalc",
+    "logo": "/images/logos/Suncalc.png",
+    "color": "#F89939"
+  },
+  {
+    "id": "threejs",
+    "name": "Three.js",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Three.js_Icon.svg",
+    "color": "#F89939"
   }
 ]

@@ -23,15 +23,6 @@ const Achievements = () => {
       details:
         "This international competition recognizes digital innovation with impact on society, showcasing our project's potential to address global urban heat challenges. We are looking forward to participating and representing our innovative solution on the global stage.",
     },
-    {
-      id: 3,
-      icon: "☁️",
-      title: "AWS Deployment Success",
-      description: "We have successfully integrated and deployed our system to",
-      highlight: "Amazon Web Services (AWS)",
-      details:
-        "Our production-ready deployment demonstrates the scalability and reliability of our heat island detection and mitigation platform.",
-    },
   ];
 
   return (
@@ -45,7 +36,7 @@ const Achievements = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
         {achievements.map((achievement, index) => (
           <motion.div
             key={achievement.id}

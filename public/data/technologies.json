@@ -102,10 +102,10 @@
     "color": "#F9AB00"
   },
   {
-  "id": "gemini",
-  "name": "Gemini (Google AI)",
-  "logo": "/images/Google-Gemini-Logo-Vector.jpg",
-  "color": "#4285F4"
+    "id": "gemini",
+    "name": "Gemini (Google AI)",
+    "logo": "/images/Google-Gemini-Logo-Vector.jpg",
+    "color": "#4285F4"
   },
   {
     "id": "scikitlearn",
@@ -159,6 +159,15 @@
     "id": "threejs",
     "name": "Three.js",
     "logo": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Three.js_Icon.svg",
+    "id": "mobilesam",
+    "name": "Mobile SAM",
+    "logo": "/images/mobilesam_logo.png",
+    "color": "#F89939"
+  },
+  {
+    "id": "depth_anything",
+    "name": "Depth Anything",
+    "logo": "/images/depth_anything_V2_logo.png",
     "color": "#F89939"
   }
 ]

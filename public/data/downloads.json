@@ -8,7 +8,7 @@
   {
     "id": "d2",
     "kind": "Document",
-    "title": "Proposal | Ayeshmantha",
+    "title": "Proposal | IT21219320",
     "file": "/docs/Project_Proposal_IT21219320.pdf"
   },
   {
@@ -69,7 +69,7 @@
     "id": "d12",
     "kind": "Document",
     "title": "Checklist 2 | Deployment Report",
-    "file": "/docs/Deployment Report_R25-002.pdf"
+    "file": "/docs/Deployment_Report_R25-002.pdf"
   },
   {
     "id": "d13",
@@ -86,7 +86,7 @@
   {
     "id": "d15",
     "kind": "Document",
-    "title": "Final Report | Ayeshmantha",
+    "title": "Final Report | IT21219320",
     "file": "/docs/R25-002_Individual_Summary_Report_Ayeshmantha.pdf"
   },
   {
@@ -106,5 +106,11 @@
     "kind": "Document",
     "title": "Final Report | Madhuwantha",
     "file": "/docs/R25-002_IT21802058.pdf"
+  },
+  {
+    "id": "d19",
+    "kind": "Document",
+    "title": "Logbook | IT21219320",
+    "file": "/docs/IT21219320_Logbook.pdf"
   }
 ]

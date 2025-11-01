@@ -26,7 +26,7 @@
   {
     "id": "d5",
     "kind": "Document",
-    "title": "Proposal | Madhuwantha",
+    "title": "Proposal | IT21802058",
     "file": "/docs/Project_Proposal_IT21802058.pdf"
   },
   {
@@ -104,25 +104,37 @@
   {
     "id": "d18",
     "kind": "Document",
-    "title": "Final Report | Madhuwantha",
+    "title": "Final Report | IT21802058",
     "file": "/docs/R25-002_IT21802058.pdf"
   },
   {
     "id": "d19",
+    "kind": "Link",
+    "title": "Final Presentation",
+    "file": "https://docs.google.com/presentation/d/1iF0C8wj3FwiWeJAIusRuuJfnEMy_q_qg/edit?usp=sharing&ouid=104981387217881353555&rtpof=true&sd=true"
+  },
+  {
+    "id": "d20",
     "kind": "Document",
     "title": "Logbook | IT21219320",
     "file": "/docs/IT21219320_Logbook.pdf"
   },
   {
-    "id": "d20",
+    "id": "d21",
     "kind": "Document",
     "title": "Logbook | IT21256264",
     "file": "/docs/IT21256264_Logbook.pdf"
   },
   {
-    "id": "d21",
+    "id": "d22",
     "kind": "Document",
     "title": "Logbook | IT21802126",
     "file": "/docs/IT21802126_Logbook.pdf"
+  },
+  {
+    "id": "d23",
+    "kind": "Document",
+    "title": "Logbook | IT21802058",
+    "file": "/docs/IT21802058_Logbook.pdf"
   }
 ]

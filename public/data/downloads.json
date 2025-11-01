@@ -20,7 +20,7 @@
   {
     "id": "d4",
     "kind": "Document",
-    "title": "Proposal | Silva",
+    "title": "Proposal | IT21802126",
     "file": "/docs/Project_Proposal_IT21802126.pdf"
   },
   {
@@ -98,7 +98,7 @@
   {
     "id": "d17",
     "kind": "Document",
-    "title": "Final Report | Silva",
+    "title": "Final Report | IT21802126",
     "file": "/docs/R25-002_IT21802126.pdf"
   },
   {
@@ -118,5 +118,11 @@
     "kind": "Document",
     "title": "Logbook | IT21256264",
     "file": "/docs/IT21256264_Logbook.pdf"
+  },
+  {
+    "id": "d21",
+    "kind": "Document",
+    "title": "Logbook | IT21802126",
+    "file": "/docs/IT21802126_Logbook.pdf"
   }
 ]

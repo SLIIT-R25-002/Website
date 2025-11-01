@@ -14,7 +14,7 @@
   {
     "id": "d3",
     "kind": "Document",
-    "title": "Proposal | Kumara",
+    "title": "Proposal | IT21256264",
     "file": "/docs/Project_Proposal_IT21256264.pdf"
   },
   {
@@ -92,7 +92,7 @@
   {
     "id": "d16",
     "kind": "Document",
-    "title": "Final Report | Kumara",
+    "title": "Final Report | IT21256264",
     "file": "/docs/R25-002_IT21256264.pdf"
   },
   {
@@ -112,5 +112,11 @@
     "kind": "Document",
     "title": "Logbook | IT21219320",
     "file": "/docs/IT21219320_Logbook.pdf"
+  },
+  {
+    "id": "d20",
+    "kind": "Document",
+    "title": "Logbook | IT21256264",
+    "file": "/docs/IT21256264_Logbook.pdf"
   }
 ]

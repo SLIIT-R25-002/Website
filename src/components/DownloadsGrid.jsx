@@ -1,39 +1,84 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import Section from './Section';
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import Section from "./Section";
 
 const DownloadsGrid = () => {
   const [downloads, setDownloads] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
 
   useEffect(() => {
-    fetch('/data/downloads.json')
-      .then(res => res.json())
-      .then(data => setDownloads(data))
-      .catch(err => console.error('Error loading downloads:', err));
+    fetch("/data/downloads.json")
+      .then((res) => res.json())
+      .then((data) => setDownloads(data))
+      .catch((err) => console.error("Error loading downloads:", err));
   }, []);
 
   const getIcon = (kind) => {
     const icons = {
       Presentation: (
-        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+        <svg
+          className="w-8 h-8"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+          />
         </svg>
       ),
       Link: (
-        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        <svg
+          className="w-8 h-8"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+          />
         </svg>
       ),
       Video: (
-        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <svg
+          className="w-8 h-8"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+          />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
         </svg>
       ),
       Default: (
-        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <svg
+          className="w-8 h-8"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
         </svg>
       ),
     };
@@ -42,27 +87,27 @@ const DownloadsGrid = () => {
   };
 
   const handleItemClick = (item) => {
-    if (item.kind === 'Video') {
+    if (item.kind === "Video") {
       setSelectedVideo(item);
-    } else if (item.kind === 'Link') {
-      window.open(item.file, '_blank', 'noopener,noreferrer');
+    } else if (item.kind === "Link") {
+      window.open(item.file, "_blank", "noopener,noreferrer");
     }
     // For Presentation and Default, the download attribute will handle it
   };
 
   const getButtonText = (kind) => {
     switch (kind) {
-      case 'Video':
-        return 'Play Video';
-      case 'Link':
-        return 'Open Link';
+      case "Video":
+        return "Play Video";
+      case "Link":
+        return "Open Link";
       default:
-        return 'Download';
+        return "Download";
     }
   };
 
   const isDownloadable = (kind) => {
-    return kind === 'Presentation' || kind === 'Document';
+    return kind === "Presentation" || kind === "Document";
   };
 
   return (
@@ -86,9 +131,7 @@ const DownloadsGrid = () => {
             whileHover={{ scale: 1.02 }}
           >
             <div className="flex items-start mb-4">
-              <div className="text-primary-600 mr-3">
-                {getIcon(item.kind)}
-              </div>
+              <div className="text-primary-600 mr-3">{getIcon(item.kind)}</div>
               <div className="flex-1">
                 <div className="text-sm text-primary-600 font-medium mb-1">
                   {item.kind}
@@ -98,7 +141,7 @@ const DownloadsGrid = () => {
                 </h3>
               </div>
             </div>
-            
+
             {isDownloadable(item.kind) ? (
               <motion.a
                 href={item.file}
@@ -148,8 +191,18 @@ const DownloadsGrid = () => {
                   onClick={() => setSelectedVideo(null)}
                   className="text-gray-500 hover:text-gray-700 transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
